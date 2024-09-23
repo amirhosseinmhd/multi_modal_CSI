@@ -11,7 +11,6 @@ from sklearn.model_selection import train_test_split
 from model import *
 from preset import preset
 from load_data import load_data_x, load_data_y, encode_data_y
-
 #
 ##
 def parse_args():
@@ -80,6 +79,8 @@ def run():
     elif var_model == "ABLSTM": run_model = run_ablstm
     #
     elif var_model == "THAT": run_model = run_that
+    elif var_model == "SSL": run_model = run_ssl
+
     #
     ## run WiFi-based model
     result = run_model(data_train_x, data_train_y, 
