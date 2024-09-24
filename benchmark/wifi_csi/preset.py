@@ -10,7 +10,7 @@ preset = {
     "model": "SSL",                                    # "ST-RF", "MLP", "LSTM", "CNN-1D", "CNN-2D", "CLSTM", "ABLSTM", "THAT"
     # "model": "MLP",
     ## define task
-    "task": "identity",                                 # "identity", "activity", "location"
+    "task": "location",                                 # "identity", "activity", "location"
     #
     ## number of repeated experiments
     "repeat": 0,
@@ -24,9 +24,9 @@ preset = {
     #
     ## data selection for experiments
     "data": {
-        "num_users": [ "1", "2", "3", "4", "5"],    # select number(s) of users, (e.g., ["0", "1"], ["2", "3", "4", "5"])
+        "num_users": [ "1"],    # select number(s) of users, (e.g., ["0", "1"], ["2", "3", "4", "5"])
         "wifi_band": ["5"],                           # select WiFi band(s) (e.g., ["2.4"], ["5"], ["2.4", "5"])
-        "environment": ["classroom"],                   # select environment(s) (e.g., ["classroom"], ["meeting_room"], ["empty_room"])
+        "environment": ["empty_room"],                   # select environment(s) (e.g., ["classroom"], ["meeting_room"], ["empty_room"])
         "length": 3000,                                 # default length of CSI
     },
     #

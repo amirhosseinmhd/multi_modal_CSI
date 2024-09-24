@@ -124,7 +124,7 @@ class SS_Model(torch.nn.Module):
 
         super().__init__()
         self.backbone = CNN_1D(var_x_shape, var_y_shape)
-
+        self.bce_loss = torch.nn.BCEWithLogitsLoss()
         sizes = [512, 256]
         # print(var_y_shape)
         self.online_head = torch.nn.Linear(sizes[0], var_y_shape[0])
@@ -144,19 +144,26 @@ class SS_Model(torch.nn.Module):
 
         self.projector = torch.nn.Sequential(*layers)
 
-    def forward(self, y1, y2, labels):
-        # print(torch.max(labels))
-        r1 = self.backbone(y1)
-        r2 = self.backbone(y2)
+    def forward(self, y1, y2=None, labels=None, inference=False):
+        if inference:
+            r1 = self.backbone(y1)
+            with torch.no_grad():
+                logits = self.online_head(r1)
+            return logits
+        else:
+            r1 = self.backbone(y1)
+            r2 = self.backbone(y2)
+            z1 = self.projector(r1)
+            z2 = self.projector(r2)
+            loss_ssl = infoNCE(z1, z2) / 2 + infoNCE(z2, z1) / 2
+            logits = self.online_head(r1.detach())
+            labels_flat = labels.reshape(-1,logits.shape[-1])
+            if labels_flat.shape[-1] != logits.shape[-1]:
+                raise ValueError(f"Mismatch in dimensions: labels_flat: {labels_flat.shape}, logits: {logits.shape}")
 
-        z1 = self.projector(r1)
-        z2 = self.projector(r2)
-        loss = infoNCE(z1, z2) / 2 + infoNCE(z2, z1) / 2
-        with torch.no_grad():
-
-            logits = self.online_head(r1)
-
-        return loss, logits
+            loss_clc = self.bce_loss(logits, labels_flat.float())
+            loss = loss_ssl + loss_clc
+            return loss, logits
 
 ##
 
@@ -302,6 +309,16 @@ class CustomSSDataset(torch.utils.data.Dataset):
 #         return masked_data
 
 
+class InferenceDataset(torch.utils.data.Dataset):
+    def __init__(self, data_x, data_y):
+        self.data_x = torch.from_numpy(data_x) if isinstance(data_x, np.ndarray) else data_x
+        self.data_y = torch.from_numpy(data_y) if isinstance(data_y, np.ndarray) else data_y
+
+    def __len__(self):
+        return len(self.data_x)
+
+    def __getitem__(self, idx):
+        return self.data_x[idx], self.data_y[idx]
 
 def run_ssl(data_train_x,
             data_train_y,
@@ -334,8 +351,8 @@ def run_ssl(data_train_x,
 
     # Create custom datasets
     train_dataset = CustomSSDataset(torch.from_numpy(data_train_x), torch.from_numpy(data_train_y))
-    test_dataset = CustomSSDataset(torch.from_numpy(data_test_x), torch.from_numpy(data_test_y))
-
+    # test_dataset = CustomSSDataset(torch.from_numpy(data_test_x), torch.from_numpy(data_test_y))
+    test_dataset = InferenceDataset(torch.from_numpy(data_test_x), torch.from_numpy(data_test_y))
     result = {}
     result_accuracy = []
     result_time_train = []
@@ -379,12 +396,12 @@ def run_ssl(data_train_x,
         all_labels = []
 
         with torch.no_grad():
-            for y1, y2, labels in test_loader:
-                y1, y2, labels = y1.to(device), y2.to(device), labels.to(device)
-                _, logits = model_ssl(y1, y2, labels)
-                preds = (torch.sigmoid(logits) > preset["nn"]["threshold"]).float()
-                all_preds.append(preds.cpu())
-                all_labels.append(labels.cpu())
+            for y1, labels in test_loader:
+                y1,  labels = y1.to(device), labels.to(device)
+                predict_test_y = model_ssl(y1, inference=True)
+                predict_test_y = (torch.sigmoid(predict_test_y) > var_threshold).float()
+                all_preds.append(predict_test_y.cpu())
+                all_labels.append(data_test_y.cpu())
 
         predict_test_y = torch.cat(all_preds, dim=0).numpy()
         data_test_y = torch.cat(all_labels, dim=0).numpy()
