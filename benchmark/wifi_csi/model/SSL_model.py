@@ -262,53 +262,6 @@ class CustomSSDataset(torch.utils.data.Dataset):
 
         return y1, y2, y
 
-# class TimeSeriesTransform:
-#     def __init__(self):
-#         self.transforms = [
-#             self.add_jitter,
-#             self.scale_data,
-#             self.mask_random_segments
-#         ]
-#
-#     def __call__(self, x):
-#         for transform in self.transforms:
-#             x = transform(x)
-#         return x
-#
-#     def add_jitter(self, data, noise_level=0.05):
-#         noise = torch.randn_like(data) * noise_level
-#         return data + noise
-#
-#     def permute_segments(self, data, num_segments=3):
-#         total_length = data.size(-1)
-#         segment_length = total_length // num_segments
-#         remainder = total_length % num_segments
-#
-#         permuted_data = data.clone()
-#         for sample in range(data.size(0)):
-#             for channel in range(data.size(1)):
-#                 segments = list(torch.split(data[sample, channel], segment_length))
-#                 if remainder > 0:
-#                     segments[-1] = torch.cat([segments[-1], data[sample, channel, -remainder:]])
-#                 np.random.shuffle(segments)
-#                 permuted_data[sample, channel] = torch.cat(segments)
-#
-#         return permuted_data
-#
-#     def scale_data(self, data, scale_range=(0.9, 1.1)):
-#         scaling_factor = torch.FloatTensor(data.size(0), data.size(1), 1).uniform_(*scale_range)
-#         return data * scaling_factor
-#
-#     def mask_random_segments(self, data, num_masks=1, mask_len=10):
-#         masked_data = data.clone()
-#         for sample in range(data.size(0)):
-#             for _ in range(num_masks):
-#                 start = np.random.randint(0, data.size(-1) - mask_len)
-#                 end = start + mask_len
-#                 masked_data[sample, :, start:end] = 0
-#         return masked_data
-
-
 class InferenceDataset(torch.utils.data.Dataset):
     def __init__(self, data_x, data_y):
         self.data_x = torch.from_numpy(data_x) if isinstance(data_x, np.ndarray) else data_x
@@ -351,7 +304,6 @@ def run_ssl(data_train_x,
 
     # Create custom datasets
     train_dataset = CustomSSDataset(torch.from_numpy(data_train_x), torch.from_numpy(data_train_y))
-    # test_dataset = CustomSSDataset(torch.from_numpy(data_test_x), torch.from_numpy(data_test_y))
     test_dataset = InferenceDataset(torch.from_numpy(data_test_x), torch.from_numpy(data_test_y))
     result = {}
     result_accuracy = []
@@ -399,9 +351,9 @@ def run_ssl(data_train_x,
             for y1, labels in test_loader:
                 y1,  labels = y1.to(device), labels.to(device)
                 predict_test_y = model_ssl(y1, inference=True)
-                predict_test_y = (torch.sigmoid(predict_test_y) > var_threshold).float()
+                predict_test_y = (torch.sigmoid(predict_test_y) > preset["nn"]["threshold"]).float()
                 all_preds.append(predict_test_y.cpu())
-                all_labels.append(data_test_y.cpu())
+                all_labels.append(labels.cpu())
 
         predict_test_y = torch.cat(all_preds, dim=0).numpy()
         data_test_y = torch.cat(all_labels, dim=0).numpy()
@@ -433,7 +385,7 @@ def run_ssl(data_train_x,
     result["accuracy"] = {"avg": np.mean(result_accuracy), "std": np.std(result_accuracy)}
     result["time_train"] = {"avg": np.mean(result_time_train), "std": np.std(result_time_train)}
     result["time_test"] = {"avg": np.mean(result_time_test), "std": np.std(result_time_test)}
-    result["complexity"] = {"parameter": var_params, "flops": var_macs * 2}
+    # result["complexity"] = {"parameter": var_params, "flops": var_macs * 2}
 
     return result
 
