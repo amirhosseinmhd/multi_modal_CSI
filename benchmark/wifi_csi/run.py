@@ -25,6 +25,7 @@ def parse_args():
     var_args.add_argument("--model", default = preset["model"], type = str)
     var_args.add_argument("--task", default = preset["task"], type = str)
     var_args.add_argument("--repeat", default = preset["repeat"], type = int)
+    var_args.add_argument("--users", default="0,1,2,3,4,5", type=str, help="Comma-separated list of user IDs")
     #
     return var_args.parse_args()
 
@@ -42,6 +43,8 @@ def run():
     var_task = var_args.task
     var_model = var_args.model
     var_repeat = var_args.repeat
+    var_users = [u.strip() for u in var_args.users.split(',')]
+    preset["data"]["num_users"]  = var_users
     #
     ## load annotation file as labels
     data_pd_y = load_data_y(preset["path"]["data_y"],

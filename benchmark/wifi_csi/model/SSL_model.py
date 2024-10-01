@@ -245,7 +245,7 @@ class TimeSeriesTransform:
     #     return permuted_data
     #
 
-class CustomSSDataset(torch.utils.data.Dataset):
+class TrainingDataset(torch.utils.data.Dataset):
     def __init__(self, data_x, data_y, transform=None):
         self.data_x = torch.from_numpy(data_x) if isinstance(data_x, np.ndarray) else data_x
         self.data_y = torch.from_numpy(data_y) if isinstance(data_y, np.ndarray) else data_y
@@ -278,7 +278,7 @@ def run_ssl(data_train_x,
             data_test_x,
             data_test_y,
             transform,
-            var_repeat=10):
+            var_repeat=1):
     """
     Run self-supervised WiFi-based model with two views
 
@@ -303,7 +303,7 @@ def run_ssl(data_train_x,
     var_x_shape, var_y_shape = data_train_x[0].shape, data_train_y[0].reshape(-1).shape
 
     # Create custom datasets
-    train_dataset = CustomSSDataset(torch.from_numpy(data_train_x), torch.from_numpy(data_train_y))
+    train_dataset = TrainingDataset(torch.from_numpy(data_train_x), torch.from_numpy(data_train_y))
     test_dataset = InferenceDataset(torch.from_numpy(data_test_x), torch.from_numpy(data_test_y))
     result = {}
     result_accuracy = []
@@ -336,21 +336,22 @@ def run_ssl(data_train_x,
                                     var_threshold=preset["nn"]["threshold"],
                                     var_batch_size=preset["nn"]["batch_size"],
                                     var_epochs=preset["nn"]["epoch"],
-                                    device=device)
+                                    device=device,
+                                    save_path=f"best_model_r{var_r}.pth")
 
         var_time_1 = time.time()
 
         # Test
         model_ssl.load_state_dict(var_best_weight)
-
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=preset["nn"]["batch_size"], shuffle=False)
+        model_ssl.eval()
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=preset["nn"]["batch_size"], shuffle=True)
         all_preds = []
         all_labels = []
 
         with torch.no_grad():
-            for y1, labels in test_loader:
-                y1,  labels = y1.to(device), labels.to(device)
-                predict_test_y = model_ssl(y1, inference=True)
+            for x, labels in test_loader:
+                x,  labels = x.to(device), labels.to(device)
+                predict_test_y = model_ssl(x, inference=True)
                 predict_test_y = (torch.sigmoid(predict_test_y) > preset["nn"]["threshold"]).float()
                 all_preds.append(predict_test_y.cpu())
                 all_labels.append(labels.cpu())
