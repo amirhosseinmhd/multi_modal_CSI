@@ -43,8 +43,8 @@ def run():
     var_task = var_args.task
     var_model = var_args.model
     var_repeat = var_args.repeat
-    var_users = [u.strip() for u in var_args.users.split(',')]
-    preset["data"]["num_users"]  = var_users
+    # var_users = [u.strip() for u in var_args.users.split(',')]
+    # preset["data"]["num_users"]  = var_users
     #
     ## load annotation file as labels
     data_pd_y_band1 = load_data_y(preset["path"]["data_y"],
@@ -104,6 +104,9 @@ def run():
     elif var_model == "THAT": run_model = run_that
     #
     elif var_model == "SSL": run_model = run_ssl
+
+    elif var_model == "dual_band": run_model = run_dual_band
+
 
     #
     ## run WiFi-based model
