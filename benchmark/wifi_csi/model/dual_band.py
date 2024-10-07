@@ -29,7 +29,15 @@ class DualBandCNN(torch.nn.Module):
         self.cnn_band2 = CNN_1D(var_x_shape_band2, [dimension_embedding])
 
         # Combine features
-        self.combine_linear = torch.nn.Linear(dimension_embedding * 2, 512)  # 512 is the output size of each CNN_1D
+        self.combine_linear = torch.nn.Linear(dimension_embedding * 2, 512)
+
+        # Add three linear layers with ReLU and skip connections
+        self.linear1 = torch.nn.Linear(512, 512)
+        self.linear2 = torch.nn.Linear(512, 512)
+        self.linear3 = torch.nn.Linear(512, 512)
+
+        self.relu = torch.nn.ReLU()
+
         self.final_linear = torch.nn.Linear(512, var_y_shape[-1])
 
     def forward(self, x_band1, x_band2):
@@ -38,7 +46,14 @@ class DualBandCNN(torch.nn.Module):
 
         combined_features = torch.cat((features_band1, features_band2), dim=1)
         combined_features = self.combine_linear(combined_features)
-        output = self.final_linear(combined_features)
+
+        # Apply three linear layers with ReLU and skip connections
+        x = combined_features
+        x = self.relu(self.linear1(x) + x)
+        x = self.relu(self.linear2(x) + x)
+        x = self.relu(self.linear3(x) + x)
+
+        output = self.final_linear(x)
         return output
 
 
