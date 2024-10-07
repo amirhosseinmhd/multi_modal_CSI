@@ -7,10 +7,10 @@
 preset = {
     #
     ## define model
-    "model": "CNN-1D, SSL",                                    # "ST-RF", "MLP", "LSTM", "CNN-1D", "CNN-2D", "CLSTM", "ABLSTM", "THAT"
+    "model": "CNN-1D",                                    # "ST-RF", "MLP", "LSTM", "CNN-1D", "CNN-2D", "CLSTM", "ABLSTM", "THAT"
     # "model": "MLP",
     ## define task
-    "task": "location",                                 # "identity", "activity", "location"
+    "task": "activity",                                 # "identity", "activity", "location"
     #
     ## number of repeated experiments
     "repeat": 1,
@@ -25,10 +25,17 @@ preset = {
     ## data selection for experiments
     "data": {
         "num_users": [ "0", "1" ] ,   # select number(s) of users, (e.g., ["0", "1"], ["2", "3", "4", "5"])
-        "wifi_band": ["5"],                           # select WiFi band(s) (e.g., ["2.4"], ["5"], ["2.4", "5"])
+        "wifi_band": ["2.4"],                           # select WiFi band(s) (e.g., ["2.4"], ["5"], ["2.4", "5"])
         "environment": ["empty_room"],                   # select environment(s) (e.g., ["classroom"], ["meeting_room"], ["empty_room"])
         "length": 3000,                                 # default length of CSI
     },
+    "data_band2": {
+        "num_users": ["0", "1"],  # select number(s) of users, (e.g., ["0", "1"], ["2", "3", "4", "5"])
+        "wifi_band": ["5"],  # select WiFi band(s) (e.g., ["2.4"], ["5"], ["2.4", "5"])
+        "environment": ["empty_room"],  # select environment(s) (e.g., ["classroom"], ["meeting_room"], ["empty_room"])
+        "length": 3000,  # default length of CSI
+    }
+    ,
     #
     ## hyperparameters of models
     "nn": {
