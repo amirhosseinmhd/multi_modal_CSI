@@ -3,7 +3,7 @@ mkdir "results"
 CONDA_BASE=$(conda info --base)
 source $CONDA_BASE/etc/profile.d/conda.sh
 
-conda activate WiMANS
+conda activate DL
 if [ $? -ne 0 ]; then
     echo "Failed to activate Conda environment. Exiting."
     exit 1

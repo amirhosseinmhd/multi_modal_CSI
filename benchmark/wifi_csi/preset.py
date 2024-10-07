@@ -7,7 +7,7 @@
 preset = {
     #
     ## define model
-    "model": "CNN-1D",                                    # "ST-RF", "MLP", "LSTM", "CNN-1D", "CNN-2D", "CLSTM", "ABLSTM", "THAT"
+    "model": "CNN-1D, SSL",                                    # "ST-RF", "MLP", "LSTM", "CNN-1D", "CNN-2D", "CLSTM", "ABLSTM", "THAT"
     # "model": "MLP",
     ## define task
     "task": "activity",                                 # "identity", "activity", "location"
@@ -17,8 +17,8 @@ preset = {
     #
     ## path of data
     "path": {
-        "data_x": "/local/data0/amir/PUBLIC_DATASET/wimans_dataset/wifi_csi/amp",               # directory of CSI amplitude files
-        "data_y": "/local/data0/amir/PUBLIC_DATASET/wimans_dataset/annotation.csv",             # path of annotation file
+        "data_x": "dataset/wifi_csi/amp",               # directory of CSI amplitude files
+        "data_y": "dataset/annotation.csv",             # path of annotation file
         "save": "results/result.json"                           # path to save results
     },
     #
@@ -33,7 +33,11 @@ preset = {
     ## hyperparameters of models
     "nn": {
         "lr": 1e-3,                                     # learning rate
-        "epoch": 300,                                   # number of epochs
+<<<<<<< HEAD
+        "epoch": 200,                                   # number of epochs
+=======
+        "epoch": 200,                                   # number of epochs
+>>>>>>> origin/main
         "batch_size": 128,                              # batch size
         "threshold": 0.5,                               # threshold to binarize sigmoid outputs
     },
