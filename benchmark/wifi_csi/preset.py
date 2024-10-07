@@ -10,7 +10,7 @@ preset = {
     "model": "CNN-1D",                                    # "ST-RF", "MLP", "LSTM", "CNN-1D", "CNN-2D", "CLSTM", "ABLSTM", "THAT"
     # "model": "MLP",
     ## define task
-    "task": "location",                                 # "identity", "activity", "location"
+    "task": "activity",                                 # "identity", "activity", "location"
     #
     ## number of repeated experiments
     "repeat": 1,
@@ -33,7 +33,7 @@ preset = {
     ## hyperparameters of models
     "nn": {
         "lr": 1e-3,                                     # learning rate
-        "epoch": 3,                                   # number of epochs
+        "epoch": 300,                                   # number of epochs
         "batch_size": 128,                              # batch size
         "threshold": 0.5,                               # threshold to binarize sigmoid outputs
     },

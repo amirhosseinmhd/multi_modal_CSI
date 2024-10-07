@@ -1,4 +1,5 @@
-
+rm -r "results"
+mkdir "results"
 CONDA_BASE=$(conda info --base)
 source $CONDA_BASE/etc/profile.d/conda.sh
 
@@ -7,9 +8,9 @@ if [ $? -ne 0 ]; then
     echo "Failed to activate Conda environment. Exiting."
     exit 1
 fi
-models=("CNN-1D")
+models=("CNN-1D" "SSL")
 
-user_configs=("0")
+user_configs=("0,1" "0,1,2,3,4,5")
 
 # Function to run models for a specific user configuration
 run_models_for_users() {
