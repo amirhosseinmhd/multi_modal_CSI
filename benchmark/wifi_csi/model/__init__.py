@@ -14,6 +14,8 @@ from .ablstm import run_ablstm
 from .that import run_that
 from .SSL_model import run_ssl
 
+from .dual_band import run_dual_band
+
 
 
 #
@@ -26,4 +28,5 @@ __all__ = ["run_strf",
            "run_cnn_lstm",
            "run_ablstm",
            "run_that",
-           "run_ssl"]
+           "run_ssl",
+           "run_dual_band"]
