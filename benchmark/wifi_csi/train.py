@@ -97,8 +97,8 @@ def train(model: Module,
         #
         predict_train_y = predict_train_y.reshape(data_batch_y.shape[0], data_batch_y.shape[1], data_batch_y.shape[2])
         # data_batch_y = data_batch_y.reshape(-1, data_batch_y.shape[-1])
-        dict_error_train = calculate_matrix_absolute_error(data_batch_y.astype(int).sum(axis=),
-                                            predict_train_y.astype(int))
+        dict_error_train = calculate_matrix_absolute_error(data_batch_y.astype(int).sum(axis=1),
+                                            predict_train_y.astype(int).sum(axis=1))
         #
         ## -------------------------------------- Evaluate ----------------------------------------
         #
@@ -124,8 +124,8 @@ def train(model: Module,
             predict_test_y = predict_test_y.reshape(data_test_y.shape[0], data_test_y.shape[1], data_test_y.shape[2])
             # data_test_y = data_test_y.reshape(-1, data_test_y.shape[-1])
             #
-            dict_error_test = calculate_matrix_absolute_error(data_test_y.astype(int).sum(axis=0),
-                                               predict_test_y.astype(int).sum(axis=0))
+            dict_error_test = calculate_matrix_absolute_error(data_test_y.astype(int).sum(axis=1),
+                                               predict_test_y.astype(int).sum(axis=1))
         #
         ## ---------------------------------------- Print -----------------------------------------
         #
