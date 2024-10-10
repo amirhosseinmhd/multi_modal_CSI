@@ -160,7 +160,7 @@ def run_cnn_1d(data_train_x,
         #
         model_cnn_1d = torch.compile(CNN_1D(var_x_shape, var_y_shape).to(device))
         #
-        optimizer = torch.optim.Adam(model_cnn_1d.parameters(), 
+        optimizer = torch.optim.Adam(model_cnn_1d.parameters(),
                                      lr = preset["nn"]["lr"],
                                      weight_decay = 0)
         #
@@ -198,46 +198,15 @@ def run_cnn_1d(data_train_x,
         ## -------------------------------------- Evaluate ----------------------------------------
         #
         ##
-        # data_test_y_c = data_test_y.reshape(-1, data_test_y.shape[-1])
-        # predict_test_y_c = predict_test_y.reshape(-1, data_test_y.shape[-1])
+
         data_test_y_c = data_test_y.sum(axis=1)
         dict_true_acc = calculate_matrix_absolute_error(data_test_y_c, predict_test_y)
-        print(
-              # "- Accuracy %.6f"%var_accuracy_train,
-              # "- Test Loss %.6f" % var_loss_test.cpu(),
-              # "- Test Accuracy %.6f"%var_accuracy_test,
+        print(" %.6fs" % (time.time() - var_time_1),
               "- Total Error %.6f" % dict_true_acc['total_error'],
-              # "- Error per Sample %.6f"%dict_true_acc['error_per_sample'],
-              f"-  avg_error_per_activity {dict_true_acc['avg_error_per_activity']}",
               "-  perfect_prediction_percentage %.6f" % dict_true_acc['perfect_prediction_percentage'],
-              "-  correct_placement_percentage %.6f" % dict_true_acc['correct_placement_percentage'],
               )
         #
-        ## Accuracy
-        # result_acc = accuracy_score(data_test_y_c.astype(int),
-        #                             predict_test_y.astype(int))
         #
-        ## Report
-        # result_dict = classification_report(data_test_y_c,
-        #                                     predict_test_y_c,
-        #                                     digits = 6,
-        # #                                     zero_division = 0,
-        #                                     output_dict = True)
-        #
-    #     result["repeat_" + str(var_r)] = result_dict
-    #     #
-    #     result_accuracy.append(result_acc)
-    #     result_time_train.append(var_time_1 - var_time_0)
-    #     result_time_test.append(var_time_2 - var_time_1)
-    #     #
-    #     print("repeat_" + str(var_r), result_accuracy)
-    #     print(result)
-    # #
-    # ##
-    # result["accuracy"] = {"avg": np.mean(result_accuracy), "std": np.std(result_accuracy)}
-    # result["time_train"] = {"avg": np.mean(result_time_train), "std": np.std(result_time_train)}
-    # result["time_test"] = {"avg": np.mean(result_time_test), "std": np.std(result_time_test)}
-    # result["complexity"] = {"parameter": var_params, "flops": var_macs * 2}
-        result = 2
+
     #
-    return result
+    return dict_true_acc
