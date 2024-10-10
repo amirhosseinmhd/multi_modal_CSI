@@ -72,9 +72,9 @@ def train(model: Module,
         predict_train_y = (torch.sigmoid(predict_train_y) > var_threshold).float()
         
         data_batch_y = data_batch_y.detach().cpu().numpy()
+        predict_train_y =  torch.clamp(torch.round(predict_train_y), min=0, max=5).float()
         predict_train_y = predict_train_y.detach().cpu().numpy()
-        
-        var_accuracy_train = calculate_matrix_absolute_error(data_batch_y.astype(int),
+        dict_error_train = calculate_matrix_absolute_error(data_batch_y.astype(int),
                                             predict_train_y.astype(int))
         
         model.eval()
@@ -91,23 +91,25 @@ def train(model: Module,
             
             data_test_y = data_test_y.detach().cpu().numpy().astype(int)
             predict_test_y = predict_test_y.detach().cpu().numpy().astype(int)
-            dict_true_acc = calculate_matrix_absolute_error(data_test_y, predict_test_y)
+            dict_error_test = calculate_matrix_absolute_error(data_test_y, predict_test_y)
 
         # Log metrics to wandb
         wandb.log({
             "epoch": var_epoch,
             "train_loss": var_loss_train.item(),
             "test_loss": var_loss_test.item(),
-            "total_error": dict_true_acc['total_error'],
-            "perfect_prediction_percentage": dict_true_acc['perfect_prediction_percentage']
+            "total_error_train": dict_error_train['total_error'],
+            "total_error_test": dict_error_test['total_error'],
+            "perfect_prediction_percentage": dict_error_test['perfect_prediction_percentage'],
+            "perfect_prediction_percentage_train": dict_error_train['perfect_prediction_percentage'],
         })
         
         print(f"Epoch {var_epoch}/{var_epochs}",
               "- %.6fs"%(time.time() - var_time_e0),
               "- Loss %.6f"%var_loss_train.cpu(),
               "- Test Loss %.6f"%var_loss_test.cpu(),
-              "- Total Error %.6f"%dict_true_acc['total_error'],
-              "- Perfect Prediction Percentage %.6f" % dict_true_acc['perfect_prediction_percentage'])
+              "- Total Error %.6f"%dict_error_test['total_error'],
+              "- Perfect Prediction Percentage %.6f" % dict_error_test['perfect_prediction_percentage'])
 
         if var_loss_test.cpu() < var_loss_test_best:
             var_loss_test_best = var_loss_test.cpu()

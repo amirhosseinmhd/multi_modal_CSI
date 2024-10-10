@@ -12,6 +12,7 @@ def calculate_matrix_absolute_error(y_true, y_pred):
     total_error = np.sum(absolute_diff)
     perfect_predictions = np.sum(np.all(absolute_diff == 0, axis=1))
     total_samples = y_true.shape[0]
+    total_error = np.sum(absolute_diff)/total_samples
     perfect_prediction_percentage = (perfect_predictions / total_samples) * 100
     return {
         'total_error': total_error,
