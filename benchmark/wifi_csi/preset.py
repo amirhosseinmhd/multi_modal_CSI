@@ -7,7 +7,7 @@
 preset = {
     #
     ## define model
-    "model": "CNN-1D",                                    # "ST-RF", "MLP", "LSTM", "CNN-1D", "CNN-2D", "CLSTM", "ABLSTM", "THAT"
+    "model": "THAT",                                    # "ST-RF", "MLP", "LSTM", "CNN-1D", "CNN-2D", "CLSTM", "ABLSTM", "THAT"
     # "model": "MLP",
     ## define task
     "task": "activity",                                 # "identity", "activity", "location"

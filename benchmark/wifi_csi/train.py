@@ -69,7 +69,7 @@ def train(model: Module,
             var_loss_train.backward()
             optimizer.step()
         
-        predict_train_y = (torch.sigmoid(predict_train_y) > var_threshold).float()
+        # predict_train_y = (torch.sigmoid(predict_train_y) > var_threshold).float()
         
         data_batch_y = data_batch_y.detach().cpu().numpy()
         predict_train_y =  torch.clamp(torch.round(predict_train_y), min=0, max=5).float()
