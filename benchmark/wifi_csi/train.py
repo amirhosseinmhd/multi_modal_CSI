@@ -14,7 +14,8 @@ from torch.optim import Optimizer
 from torch.utils.data import TensorDataset, DataLoader
 from copy import deepcopy
 from sklearn.metrics import accuracy_score
-
+import wandb
+from utils import calculate_matrix_absolute_error
 #
 ##
 torch.set_float32_matmul_precision("high")
@@ -49,11 +50,16 @@ def train(model: Module,
     """
     #
     ##
+    wandb.init(project="wifi-based-model", config={
+        "learning_rate": optimizer.param_groups[0]['lr'],
+        "epochs": var_epochs,
+        "batch_size": var_batch_size
+    })
     data_train_loader = DataLoader(data_train_set, var_batch_size, shuffle = True, pin_memory = True)
     data_test_loader = DataLoader(data_test_set, len(data_test_set))
     #
     ##
-    var_best_accuracy = 0
+    var_loss_test_best = float('inf')
     var_best_weight = None
     #
     ##
@@ -89,9 +95,9 @@ def train(model: Module,
         data_batch_y = data_batch_y.detach().cpu().numpy()
         predict_train_y = predict_train_y.detach().cpu().numpy()
         #
-        predict_train_y = predict_train_y.reshape(-1, data_batch_y.shape[-1])
-        data_batch_y = data_batch_y.reshape(-1, data_batch_y.shape[-1])
-        var_accuracy_train = accuracy_score(data_batch_y.astype(int), 
+        predict_train_y = predict_train_y.reshape(data_batch_y.shape[0], data_batch_y.shape[1], data_batch_y.shape[2])
+        # data_batch_y = data_batch_y.reshape(-1, data_batch_y.shape[-1])
+        dict_error_train = calculate_matrix_absolute_error(data_batch_y.astype(int).sum(axis=),
                                             predict_train_y.astype(int))
         #
         ## -------------------------------------- Evaluate ----------------------------------------
@@ -115,26 +121,36 @@ def train(model: Module,
             data_test_y = data_test_y.detach().cpu().numpy()
             predict_test_y = predict_test_y.detach().cpu().numpy()
             #
-            predict_test_y = predict_test_y.reshape(-1, data_test_y.shape[-1])
-            data_test_y = data_test_y.reshape(-1, data_test_y.shape[-1])
+            predict_test_y = predict_test_y.reshape(data_test_y.shape[0], data_test_y.shape[1], data_test_y.shape[2])
+            # data_test_y = data_test_y.reshape(-1, data_test_y.shape[-1])
             #
-            var_accuracy_test = accuracy_score(data_test_y.astype(int), 
-                                               predict_test_y.astype(int))
+            dict_error_test = calculate_matrix_absolute_error(data_test_y.astype(int).sum(axis=0),
+                                               predict_test_y.astype(int).sum(axis=0))
         #
         ## ---------------------------------------- Print -----------------------------------------
         #
+        wandb.log({
+            "epoch": var_epoch,
+            "train_loss": var_loss_train.item(),
+            "test_loss": var_loss_test.item(),
+            "total_error_train": dict_error_train['total_error'],
+            "total_error_test": dict_error_test['total_error'],
+            "perfect_prediction_percentage": dict_error_test['perfect_prediction_percentage'],
+            "perfect_prediction_percentage_train": dict_error_train['perfect_prediction_percentage'],
+        })
+
         print(f"Epoch {var_epoch}/{var_epochs}",
-              "- %.6fs"%(time.time() - var_time_e0),
-              "- Loss %.6f"%var_loss_train.cpu(),
-              "- Accuracy %.6f"%var_accuracy_train,
-              "- Test Loss %.6f"%var_loss_test.cpu(),
-              "- Test Accuracy %.6f"%var_accuracy_test)
-        #
-        ##
-        if var_accuracy_test > var_best_accuracy:
-            #
-            var_best_accuracy = var_accuracy_test
+              "- %.6fs" % (time.time() - var_time_e0),
+              "- Loss %.6f" % var_loss_train.cpu(),
+              "- Test Loss %.6f" % var_loss_test.cpu(),
+              "- Total Error Train %.6f" % dict_error_train['total_error'],
+              "- Total Error %.6f" % dict_error_test['total_error'],
+              "- Perfect Prediction Percentage %.6f" % dict_error_test['perfect_prediction_percentage'])
+
+        if var_loss_test.cpu() < var_loss_test_best:
+            var_loss_test_best = var_loss_test.cpu()
             var_best_weight = deepcopy(model.state_dict())
-    #
-    ##
+
+    wandb.finish()
+
     return var_best_weight
