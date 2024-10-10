@@ -14,6 +14,7 @@ from sklearn.metrics import classification_report, accuracy_score
 #
 from train import train
 from preset import preset
+from utils import calculate_matrix_absolute_error
 
 #
 ##
@@ -128,7 +129,8 @@ def run_cnn_1d(data_train_x,
     data_test_x = data_test_x.reshape(data_test_x.shape[0], data_test_x.shape[1], -1)
     #
     ## shape for model
-    var_x_shape, var_y_shape = data_train_x[0].shape, data_train_y[0].reshape(-1).shape
+    var_x_shape, var_y_shape = data_train_x[0].shape,[data_train_y[0].shape[1]]
+
     #
     data_train_set = TensorDataset(torch.from_numpy(data_train_x), torch.from_numpy(data_train_y))
     data_test_set = TensorDataset(torch.from_numpy(data_test_x), torch.from_numpy(data_test_y))
@@ -143,7 +145,7 @@ def run_cnn_1d(data_train_x,
     result_time_test = []
     #
     ##
-    var_macs, var_params = get_model_complexity_info(CNN_1D(var_x_shape, var_y_shape), 
+    var_macs, var_params = get_model_complexity_info(CNN_1D(var_x_shape, var_y_shape),
                                                      var_x_shape, as_strings = False)
     #
     print("Parameters:", var_params, "- FLOPs:", var_macs * 2)
@@ -162,15 +164,16 @@ def run_cnn_1d(data_train_x,
                                      lr = preset["nn"]["lr"],
                                      weight_decay = 0)
         #
-        loss = torch.nn.BCEWithLogitsLoss(pos_weight = torch.tensor([6] * var_y_shape[-1]).to(device))
+        # loss = torch.nn.BCEWithLogitsLoss(pos_weight = torch.tensor([6] * var_y_shape[-1]).to(device))
         #
+        loss = torch.nn.MSELoss()
         var_time_0 = time.time()
         #
         ## ---------------------------------------- Train -----------------------------------------
         #
-        var_best_weight = train(model = model_cnn_1d, 
-                                optimizer = optimizer, 
-                                loss = loss, 
+        var_best_weight = train(model = model_cnn_1d,
+                                optimizer = optimizer,
+                                loss = loss,
                                 data_train_set = data_train_set,
                                 data_test_set = data_test_set,
                                 var_threshold = preset["nn"]["threshold"],
@@ -187,7 +190,7 @@ def run_cnn_1d(data_train_x,
         with torch.no_grad():
             predict_test_y = model_cnn_1d(torch.from_numpy(data_test_x).to(device))
         #
-        predict_test_y = (torch.sigmoid(predict_test_y) > preset["nn"]["threshold"]).float()
+        predict_test_y = torch.clamp(torch.round(predict_test_y), min=0, max=5).float()
         predict_test_y = predict_test_y.detach().cpu().numpy()
         #
         var_time_2 = time.time()
@@ -195,33 +198,46 @@ def run_cnn_1d(data_train_x,
         ## -------------------------------------- Evaluate ----------------------------------------
         #
         ##
-        data_test_y_c = data_test_y.reshape(-1, data_test_y.shape[-1])
-        predict_test_y_c = predict_test_y.reshape(-1, data_test_y.shape[-1])
+        # data_test_y_c = data_test_y.reshape(-1, data_test_y.shape[-1])
+        # predict_test_y_c = predict_test_y.reshape(-1, data_test_y.shape[-1])
+        data_test_y_c = data_test_y.sum(axis=1)
+        dict_true_acc = calculate_matrix_absolute_error(data_test_y_c, predict_test_y)
+        print(
+              # "- Accuracy %.6f"%var_accuracy_train,
+              # "- Test Loss %.6f" % var_loss_test.cpu(),
+              # "- Test Accuracy %.6f"%var_accuracy_test,
+              "- Total Error %.6f" % dict_true_acc['total_error'],
+              # "- Error per Sample %.6f"%dict_true_acc['error_per_sample'],
+              f"-  avg_error_per_activity {dict_true_acc['avg_error_per_activity']}",
+              "-  perfect_prediction_percentage %.6f" % dict_true_acc['perfect_prediction_percentage'],
+              "-  correct_placement_percentage %.6f" % dict_true_acc['correct_placement_percentage'],
+              )
         #
         ## Accuracy
-        result_acc = accuracy_score(data_test_y_c.astype(int), 
-                                    predict_test_y_c.astype(int))
+        # result_acc = accuracy_score(data_test_y_c.astype(int),
+        #                             predict_test_y.astype(int))
         #
         ## Report
-        result_dict = classification_report(data_test_y_c, 
-                                            predict_test_y_c, 
-                                            digits = 6, 
-                                            zero_division = 0, 
-                                            output_dict = True)
+        # result_dict = classification_report(data_test_y_c,
+        #                                     predict_test_y_c,
+        #                                     digits = 6,
+        # #                                     zero_division = 0,
+        #                                     output_dict = True)
         #
-        result["repeat_" + str(var_r)] = result_dict
-        #
-        result_accuracy.append(result_acc)
-        result_time_train.append(var_time_1 - var_time_0)
-        result_time_test.append(var_time_2 - var_time_1)
-        #
-        print("repeat_" + str(var_r), result_accuracy)
-        print(result)
-    #
-    ##
-    result["accuracy"] = {"avg": np.mean(result_accuracy), "std": np.std(result_accuracy)}
-    result["time_train"] = {"avg": np.mean(result_time_train), "std": np.std(result_time_train)}
-    result["time_test"] = {"avg": np.mean(result_time_test), "std": np.std(result_time_test)}
-    result["complexity"] = {"parameter": var_params, "flops": var_macs * 2}
+    #     result["repeat_" + str(var_r)] = result_dict
+    #     #
+    #     result_accuracy.append(result_acc)
+    #     result_time_train.append(var_time_1 - var_time_0)
+    #     result_time_test.append(var_time_2 - var_time_1)
+    #     #
+    #     print("repeat_" + str(var_r), result_accuracy)
+    #     print(result)
+    # #
+    # ##
+    # result["accuracy"] = {"avg": np.mean(result_accuracy), "std": np.std(result_accuracy)}
+    # result["time_train"] = {"avg": np.mean(result_time_train), "std": np.std(result_time_train)}
+    # result["time_test"] = {"avg": np.mean(result_time_test), "std": np.std(result_time_test)}
+    # result["complexity"] = {"parameter": var_params, "flops": var_macs * 2}
+        result = 2
     #
     return result
