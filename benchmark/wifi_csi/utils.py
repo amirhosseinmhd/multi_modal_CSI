@@ -7,9 +7,9 @@ def calculate_matrix_absolute_error(y_true, y_pred):
     y_pred = np.array(y_pred)
     # Calculate the absolute difference
     absolute_diff = np.abs(y_true - y_pred)
-
+    acc_bysample = (1*absolute_diff == 0).sum(axis=1)/absolute_diff.shape[1]
+    acc = acc_bysample.mean()
     # Calculate total error and error per sample
-    total_error = np.sum(absolute_diff)
     perfect_predictions = np.sum(np.all(absolute_diff == 0, axis=1))
     total_samples = y_true.shape[0]
     total_error = np.sum(absolute_diff)/total_samples
@@ -17,6 +17,7 @@ def calculate_matrix_absolute_error(y_true, y_pred):
     return {
         'total_error': total_error,
         'perfect_prediction_percentage': perfect_prediction_percentage,
+        'accuracy': acc
     }
 
 

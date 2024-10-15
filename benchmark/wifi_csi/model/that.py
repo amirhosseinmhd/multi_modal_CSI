@@ -16,7 +16,7 @@ from sklearn.metrics import classification_report, accuracy_score
 from train import train
 from preset import preset
 from utils import calculate_matrix_absolute_error
-
+import wandb
 #
 ##
 ## ------------------------------------------------------------------------------------------ ##
@@ -337,13 +337,17 @@ def run_that(data_train_x,
     ## ========================================= Train & Evaluate =========================================
     #
     ##
+    wandb.init(project="wifi-based-model-THAT", config={
+        "model": "THAT",
+        "repeat_experiments": var_repeat,
+    })
     result = {}
     result_accuracy = []
     result_time_train = []
     result_time_test = []
     #
     ##
-    var_macs, var_params = get_model_complexity_info(THAT(var_x_shape, var_y_shape), 
+    var_macs, var_params = get_model_complexity_info(THAT(var_x_shape, var_y_shape),
                                                      var_x_shape, as_strings = False)
     #
     print("Parameters:", var_params, "- FLOPs:", var_macs * 2)
@@ -353,25 +357,35 @@ def run_that(data_train_x,
         #
         ##
         print("Repeat", var_r)
+        run = wandb.init(
+            project="wifi-based-model-THAT",
+            name=f"Repeat_{var_r}",
+            config={
+                "model": "THAT",
+                "repeat": var_r,
+            },
+            reinit=True  # Allow multiple wandb.init() calls in the same process
+        )
         #
         torch.random.manual_seed(var_r + 39)
         #
         model_that = THAT(var_x_shape, var_y_shape).to(device)
         #
-        optimizer = torch.optim.Adam(model_that.parameters(), 
+        optimizer = torch.optim.Adam(model_that.parameters(),
                                      lr = preset["nn"]["lr"],
                                      weight_decay = 0)
         #
         # loss = torch.nn.BCEWithLogitsLoss(pos_weight = torch.tensor([4] * var_y_shape[-1]).to(device))
-        loss = torch.nn.MSELoss()
-        #
+        # loss = torch.nn.MSELoss()
+        loss = torch.nn.SmoothL1Loss()
+
         var_time_0 = time.time()
         #
         ## ---------------------------------------- Train -----------------------------------------
         #
-        var_best_weight = train(model = model_that, 
-                                optimizer = optimizer, 
-                                loss = loss, 
+        var_best_weight = train(model = model_that,
+                                optimizer = optimizer,
+                                loss = loss,
                                 data_train_set = data_train_set,
                                 data_test_set = data_test_set,
                                 var_threshold = preset["nn"]["threshold"],
@@ -399,6 +413,14 @@ def run_that(data_train_x,
 
         data_test_y_c = data_test_y.sum(axis=1)
         dict_true_acc = calculate_matrix_absolute_error(data_test_y_c, predict_test_y)
+        wandb.log({
+            "repeat": var_r,
+            "train_time": var_time_1 - var_time_0,
+            "test_time": var_time_2 - var_time_1,
+            "TOTAL_TESTSET_ERROR": dict_true_acc['total_error'],
+            "TOTAL_TESTSET_perfect_prediction_percentage": dict_true_acc['perfect_prediction_percentage'],
+            "TOTAL_ACCURACY": dict_true_acc['accuracy'],
+        })
         print(" %.6fs" % (time.time() - var_time_1),
               "- Total Error %.6f" % dict_true_acc['total_error'],
               "-  perfect_prediction_percentage %.6f" % dict_true_acc['perfect_prediction_percentage'],
@@ -407,6 +429,15 @@ def run_that(data_train_x,
         #
 
         #
+        result_accuracy.append(dict_true_acc['perfect_prediction_percentage'])
+        result_time_train.append(var_time_1 - var_time_0)
+        result_time_test.append(var_time_2 - var_time_1)
+    wandb.log({
+        "avg_accuracy": sum(result_accuracy) / len(result_accuracy),
+        "avg_train_time": sum(result_time_train) / len(result_time_train),
+        "avg_test_time": sum(result_time_test) / len(result_time_test),
+    })
+    wandb.finish()
     return dict_true_acc
     #
     #     predict_test_y = (torch.sigmoid(predict_test_y) > preset["nn"]["threshold"]).float()

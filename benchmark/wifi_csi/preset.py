@@ -13,7 +13,7 @@ preset = {
     "task": "activity",                                 # "identity", "activity", "location"
     #
     ## number of repeated experiments
-    "repeat": 1,
+    "repeat": 2,
     #
     ## path of data
     "path": {
@@ -40,7 +40,7 @@ preset = {
     ## hyperparameters of models
     "nn": {
         "lr": 1e-3,                                     # learning rate
-        "epoch": 300,                                   # number of epochs
+        "epoch": 1,                                   # number of epochs
         "batch_size": 128,                              # batch size
         "threshold": 0.5,                               # threshold to binarize sigmoid outputs
     },
