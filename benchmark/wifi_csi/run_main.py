@@ -11,6 +11,7 @@ from sklearn.model_selection import train_test_split
 from model import *
 from preset import preset
 from load_data import load_data_x, load_data_y, encode_data_y
+from utils import *
 #
 ##
 def parse_args():
@@ -57,9 +58,10 @@ def run():
     ## load CSI amplitude
     data_x = load_data_x(preset["path"]["data_x"], var_label_list)
     #
-    ## encode labels
     data_y = encode_data_y(data_pd_y, var_task)
     #
+    if var_model == "multi_head":
+        data_y = reduce_dataset(data_y)
     ## a training set (80%) and a test set (20%)
     data_train_x, data_test_x, data_train_y, data_test_y = train_test_split(data_x, data_y,
                                                                             test_size = 0.2,
