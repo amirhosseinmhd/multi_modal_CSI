@@ -342,7 +342,7 @@ class PermutationMatchingLoss(nn.Module):
         return final_loss.mean()
 #
 ##
-def run_that(data_train_x,
+def run_that_multihead(data_train_x,
              data_train_y,
              data_test_x,
              data_test_y,
@@ -380,10 +380,10 @@ def run_that(data_train_x,
     ## ========================================= Train & Evaluate =========================================
     #
     ##
-    wandb.init(project="wifi-based-model-THAT", config={
-        "model": "THAT",
-        "repeat_experiments": var_repeat,
-    })
+    # wandb.init(project="wifi-based-model-THAT", config={
+    #     "model": "THAT_multi_head",
+    #     "repeat_experiments": var_repeat,
+    # })
     result = {}
     result_accuracy = []
     result_time_train = []
@@ -404,7 +404,7 @@ def run_that(data_train_x,
             project="wifi-based-model-THAT",
             name=f"Repeat_{var_r}",
             config={
-                "model": "THAT",
+                "model": "THAT_MultiHead",
                 "repeat": var_r,
             },
             reinit=True  # Allow multiple wandb.init() calls in the same process
@@ -422,6 +422,7 @@ def run_that(data_train_x,
         # loss = torch.nn.MSELoss()
         # loss = torch.nn.SmoothL1Loss()
         loss = PermutationMatchingLoss()
+        var_mode = "multi_head"
 
         var_time_0 = time.time()
         #
@@ -435,7 +436,8 @@ def run_that(data_train_x,
                                 var_threshold = preset["nn"]["threshold"],
                                 var_batch_size = preset["nn"]["batch_size"],
                                 var_epochs = preset["nn"]["epoch"],
-                                device = device)
+                                device = device,
+                                var_mode=var_mode)
         #
         var_time_1 = time.time()
         #
@@ -456,8 +458,7 @@ def run_that(data_train_x,
         ##
 
         # data_test_y_c = data_test_y.sum(axis=1)
-        data_test_y_c = data_test_y
-        dict_true_acc = calculate_matrix_absolute_error(data_test_y_c, predict_test_y)
+        dict_true_acc = calculate_matrix_absolute_error(data_test_y, predict_test_y, var_mode=var_mode)
         wandb.log({
             "repeat": var_r,
             "train_time": var_time_1 - var_time_0,

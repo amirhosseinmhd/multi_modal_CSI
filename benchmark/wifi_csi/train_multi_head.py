@@ -1,9 +1,3 @@
-"""
-[file]          train.py
-[description]   function to train WiFi-based models
-"""
-#
-##
 import time
 import torch
 import torch._dynamo
@@ -15,13 +9,9 @@ from torch.utils.data import TensorDataset, DataLoader
 from copy import deepcopy
 from utils import calculate_matrix_absolute_error
 
-#
-##
 torch.set_float32_matmul_precision("high")
 torch._dynamo.config.cache_size_limit = 65536
 
-#
-##
 def train(model: Module,
           optimizer: Optimizer,
           loss: Module,
@@ -30,8 +20,7 @@ def train(model: Module,
           var_threshold: float,
           var_batch_size: int,
           var_epochs: int,
-          device: device,
-          var_mode: str):
+          device: device):
 
     """
     [description]
@@ -50,10 +39,16 @@ def train(model: Module,
     : var_best_weight: weights of trained model
     """
 
+    # Initialize wandb
+    # wandb.init(project="wifi-based-model", config={
+    #     "learning_rate": optimizer.param_groups[0]['lr'],
+    #     "epochs": var_epochs,
+    #     "batch_size": var_batch_size
+    # })
 
     data_train_loader = DataLoader(data_train_set, var_batch_size, shuffle=True, pin_memory=True)
     data_test_loader = DataLoader(data_test_set, len(data_test_set))
-
+    var_mode = 'multi_head'
     var_loss_test_best = float('inf')
     var_best_weight = None
 
@@ -64,12 +59,7 @@ def train(model: Module,
         for data_batch in data_train_loader:
             data_batch_x, data_batch_y = data_batch
             data_batch_x = data_batch_x.to(device)
-            if var_mode == "multi_head":
-                data_batch_y = data_batch_y.to(device)
-            if var_mode == "count_classification":
-                data_batch_y = data_batch_y.to(device).sum(axis=1)
-            if var_mode == "baseline":
-                data_batch_y = data_batch_y.reshape(data_batch_y.shape[0], -1).to(device)
+            data_batch_y = data_batch_y.to(device) # Previously we summed 
 
             predict_train_y = model(data_batch_x)
 
@@ -84,19 +74,13 @@ def train(model: Module,
         data_batch_y = data_batch_y.detach().cpu().numpy()
         predict_train_y = predict_train_y.detach().cpu().numpy()
         dict_error_train = calculate_matrix_absolute_error(data_batch_y.astype(int),
-                                            predict_train_y.astype(int),
-                                            var_mode=var_mode, var_threshold=var_threshold)
+                                            predict_train_y.astype(int), var_mode=var_mode)
 
         model.eval()
         with torch.no_grad():
             data_test_x, data_test_y = next(iter(data_test_loader))
             data_test_x = data_test_x.to(device)
-            if var_mode == "multi_head":
-                data_test_y = data_test_y.to(device)
-            if var_mode == "count_classification":
-                data_test_y = data_test_y.to(device).sum(axis=1)
-            if var_mode == "baseline":
-                data_test_y  = data_test_y.reshape(data_test_y.shape[0], -1).to(device)
+            data_test_y = data_test_y.to(device)#.sum(axis=1)
 
             predict_test_y = model(data_test_x)
 
@@ -106,7 +90,7 @@ def train(model: Module,
 
             data_test_y = data_test_y.detach().cpu().numpy().astype(int)
             predict_test_y = predict_test_y.detach().cpu().numpy().astype(int)
-            dict_error_test = calculate_matrix_absolute_error(data_test_y, predict_test_y, var_mode, var_threshold)
+            dict_error_test = calculate_matrix_absolute_error(data_test_y, predict_test_y, var_mode = var_mode)
 
         # Log metrics to wandb
         wandb.log({

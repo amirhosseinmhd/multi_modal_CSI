@@ -60,7 +60,7 @@ def run():
     #
     data_y = encode_data_y(data_pd_y, var_task)
     #
-    if var_model == "multi_head":
+    if var_model == "THAT_MULTI_HEAD":
         data_y = reduce_dataset(data_y)
     ## a training set (80%) and a test set (20%)
     data_train_x, data_test_x, data_train_y, data_test_y = train_test_split(data_x, data_y,
@@ -86,6 +86,12 @@ def run():
     elif var_model == "THAT": run_model = run_that
     #
     elif var_model == "SSL": run_model = run_ssl
+    #
+    elif var_model == "THAT_COUNT": run_model = run_that_count_pred
+    #
+    elif var_model == "THAT_MULTI_HEAD": run_model = run_that_multihead
+
+
 
     #
     ## run WiFi-based model

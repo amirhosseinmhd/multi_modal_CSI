@@ -7,13 +7,13 @@
 preset = {
     #
     ## define model
-    "model": "THAT",                                    # "ST-RF", "MLP", "LSTM", "CNN-1D", "CNN-2D", "CLSTM", "ABLSTM", "THAT"
+    "model": "THAT_COUNT",                                    # "ST-RF", "MLP", "LSTM", "CNN-1D", "CNN-2D", "CLSTM", "ABLSTM", "THAT"
     # "model": "MLP",
     ## define task
     "task": "activity",                                 # "identity", "activity", "location"
     #
     ## number of repeated experiments
-    "repeat": 2,
+    "repeat": 1,
     #
     ## path of data
     "path": {
@@ -40,7 +40,7 @@ preset = {
     ## hyperparameters of models
     "nn": {
         "lr": 1e-3,                                     # learning rate
-        "epoch": 1,                                   # number of epochs
+        "epoch": 100,                                   # number of epochs
         "batch_size": 128,                              # batch size
         "threshold": 0.5,                               # threshold to binarize sigmoid outputs
     },
