@@ -61,18 +61,29 @@ def train(model: Module,
         var_time_e0 = time.time()
 
         model.train()
+        # flag = True
         for data_batch in data_train_loader:
             data_batch_x, data_batch_y = data_batch
             data_batch_x = data_batch_x.to(device)
+            data_batch_y = data_batch_y.to(device)
+            if var_mode == "count_classification_withConstrain":
+                pass
             if var_mode == "multi_head":
-                data_batch_y = data_batch_y.to(device)
+                pass
             if var_mode == "count_classification":
-                data_batch_y = data_batch_y.to(device).sum(axis=1)
+                data_batch_y = data_batch_y.sum(axis=1)
             if var_mode == "baseline":
-                data_batch_y = data_batch_y.reshape(data_batch_y.shape[0], -1).to(device)
+                data_batch_y = data_batch_y.reshape(data_batch_y.shape[0], -1)
 
             predict_train_y = model(data_batch_x)
-
+            # print(data_batch_y.shape)
+            # if flag:
+            #     flag = False
+            #     print(f"epoch {var_epoch} ")
+            #     print("main_data:")
+            #     print(data_batch_y[0])
+            #     print("predicted_data:")
+            #     print(predict_train_y[0])
             var_loss_train = loss(predict_train_y, data_batch_y.float())
 
             optimizer.zero_grad()
@@ -91,12 +102,11 @@ def train(model: Module,
         with torch.no_grad():
             data_test_x, data_test_y = next(iter(data_test_loader))
             data_test_x = data_test_x.to(device)
-            if var_mode == "multi_head":
-                data_test_y = data_test_y.to(device)
+            data_test_y = data_test_y.to(device)
             if var_mode == "count_classification":
-                data_test_y = data_test_y.to(device).sum(axis=1)
+                data_test_y = data_test_y.sum(axis=1)
             if var_mode == "baseline":
-                data_test_y  = data_test_y.reshape(data_test_y.shape[0], -1).to(device)
+                data_test_y  = data_test_y.reshape(data_test_y.shape[0], -1)
 
             predict_test_y = model(data_test_x)
 
@@ -104,8 +114,8 @@ def train(model: Module,
 
             # predict_test_y = torch.clamp(torch.round(predict_test_y), min=0, max=5).float()
 
-            data_test_y = data_test_y.detach().cpu().numpy().astype(int)
-            predict_test_y = predict_test_y.detach().cpu().numpy().astype(int)
+            data_test_y = data_test_y.detach().cpu().numpy()
+            predict_test_y = predict_test_y.detach().cpu().numpy()
             dict_error_test = calculate_matrix_absolute_error(data_test_y, predict_test_y, var_mode, var_threshold)
 
         # Log metrics to wandb

@@ -1,6 +1,6 @@
 """
 [file]          that.py
-[description]   implement and evaluate WiFi-based model THAT
+[description]   implement and evaluate WiFi-based model THAT_DECODER_MULTIHEAD
                 https://github.com/windofshadow/THAT
 """
 #
@@ -15,7 +15,7 @@ from sklearn.metrics import classification_report, accuracy_score
 #
 from train import train
 from preset import preset
-from utils import calculate_matrix_absolute_error
+from utils import *
 import wandb
 
 #
@@ -170,7 +170,7 @@ class Encoder(torch.nn.Module):
 #
 ##
 ## ------------------------------------------------------------------------------------------ ##
-## ---------------------------------------- THAT -------------------------------------------- ##
+## ---------------------------------------- THAT_DECODER_MULTIHEAD -------------------------------------------- ##
 ## ------------------------------------------------------------------------------------------ ##
 #
 ##
@@ -308,7 +308,7 @@ def run_that(data_train_x,
              var_repeat=10):
     """
     [description]
-    : run WiFi-based model THAT
+    : run WiFi-based model THAT_DECODER_MULTIHEAD
     [parameter]
     : data_train_x: numpy array, CSI amplitude to train model
     : data_train_y: numpy array, labels to train model
@@ -339,9 +339,9 @@ def run_that(data_train_x,
     ## ========================================= Train & Evaluate =========================================
     #
     ##
-    print("Running main THAT model based on BCE logit loss")
-    wandb.init(project="wifi-based-model-THAT", config={
-        "model": "THAT",
+    print("Running main THAT_DECODER_MULTIHEAD model based on BCE logit loss")
+    wandb.init(project="wifi-based-model-THAT_DECODER_MULTIHEAD", config={
+        "model": "THAT_DECODER_MULTIHEAD",
         "repeat_experiments": var_repeat,
     })
     result = {}
@@ -375,7 +375,7 @@ def run_that(data_train_x,
         # loss = torch.nn.MSELoss()
         # loss = torch.nn.SmoothL1Loss()
         run = wandb.init(
-            project="wifi-based-model-THAT",
+            project="wifi-based-model-THAT_DECODER_MULTIHEAD",
             name=f"Repeat_{var_r}" + loss_mode,
             config={
                 "model": "THAT_BCE",
@@ -440,44 +440,20 @@ def run_that(data_train_x,
         "avg_train_time": sum(result_time_train) / len(result_time_train),
         "avg_test_time": sum(result_time_test) / len(result_time_test),
     })
+    viz_stats = visualize_model_performance(
+        y_pred=predict_test_y,
+        y_true=data_test_y,
+        var_mode=loss_mode,
+        save_dir=f'./visualizations/experiment_{var_r}_{loss_mode}'
+    )
+
+    # Print additional statistics
+    print("\nDetailed Performance Analysis:")
+    print(f"Mean Error: {viz_stats['mean_error']:.4f} ± {viz_stats['error_std']:.4f}")
+    print("\nClass-wise Mean Absolute Error:")
+    for i, error in enumerate(viz_stats['class_wise_mae']):
+        print(f"Class {i}: {error:.4f}")
+    print(f"\nPerfect Predictions: {viz_stats['perfect_predictions'] * 100:.2f}%")
+
     wandb.finish()
     return dict_true_acc
-    #
-    #     predict_test_y = (torch.sigmoid(predict_test_y) > preset["nn"]["threshold"]).float()
-    #     predict_test_y = predict_test_y.detach().cpu().numpy()
-    #     #
-    #     var_time_2 = time.time()
-    #     #
-    #     ## -------------------------------------- Evaluate ----------------------------------------
-    #     #
-    #     ##
-    #     data_test_y_c = data_test_y.reshape(-1, data_test_y.shape[-1])
-    #     predict_test_y_c = predict_test_y.reshape(-1, data_test_y.shape[-1])
-    #     #
-    #     ## Accuracy
-    #     result_acc = accuracy_score(data_test_y_c.astype(int),
-    #                                 predict_test_y_c.astype(int))
-    #     #
-    #     ## Report
-    #     result_dict = classification_report(data_test_y_c,
-    #                                         predict_test_y_c,
-    #                                         digits = 6,
-    #                                         zero_division = 0,
-    #                                         output_dict = True)
-    #     #
-    #     result["repeat_" + str(var_r)] = result_dict
-    #     #
-    #     result_accuracy.append(result_acc)
-    #     result_time_train.append(var_time_1 - var_time_0)
-    #     result_time_test.append(var_time_2 - var_time_1)
-    #     #
-    #     print("repeat_" + str(var_r), result_accuracy)
-    #     print(result)
-    # #
-    # ##
-    # result["accuracy"] = {"avg": np.mean(result_accuracy), "std": np.std(result_accuracy)}
-    # result["time_train"] = {"avg": np.mean(result_time_train), "std": np.std(result_time_train)}
-    # result["time_test"] = {"avg": np.mean(result_time_test), "std": np.std(result_time_test)}
-    # result["complexity"] = {"parameter": var_params, "flops": var_macs * 2}
-    # #
-    # return result

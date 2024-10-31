@@ -1,24 +1,31 @@
 """
 [file]          that.py
-[description]   implement and evaluate WiFi-based model THAT
+[description]   implement and evaluate WiFi-based model THAT_DECODER_MULTIHEAD
                 https://github.com/windofshadow/THAT
 """
 #
 ##
 import time
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import confusion_matrix
+import numpy as np
 import torch
 import numpy as np
-#
+import os
 import torch.nn as nn
 from torch.utils.data import TensorDataset
 from ptflops import get_model_complexity_info
 from itertools import permutations
 from sklearn.metrics import classification_report, accuracy_score
 #
+from scipy.optimize import linear_sum_assignment
 from train import train
 from preset import preset
 from utils import *
 import wandb
+import torch.nn.functional as F
 #
 ##
 ## ------------------------------------------------------------------------------------------ ##
@@ -171,11 +178,11 @@ class Encoder(torch.nn.Module):
 #
 ##
 ## ------------------------------------------------------------------------------------------ ##
-## ---------------------------------------- THAT -------------------------------------------- ##
+## ---------------------------------------- THAT_DECODER_MULTIHEAD -------------------------------------------- ##
 ## ------------------------------------------------------------------------------------------ ##
 #
 ##
-class THAT_COUNT_PRED(torch.nn.Module):
+class THAT_COUNT_PRED_with_Constraint(torch.nn.Module):
     #
     ##
     def __init__(self, 
@@ -183,11 +190,13 @@ class THAT_COUNT_PRED(torch.nn.Module):
                  var_y_shape):
         #
         ##
-        super(THAT_COUNT_PRED, self).__init__()
+        super(THAT_COUNT_PRED_with_Constraint, self).__init__()
         #
         var_dim_feature = var_x_shape[-1]
         var_dim_time = var_x_shape[-2]
-        var_dim_output = var_y_shape[-1]
+        # var_dim_output = var_y_shape[-1]
+        self.num_classes = 10
+        var_dim_output = 5 * self.num_classes
         #
         ## ---------------------------------------- left ------------------------------------------
         #
@@ -240,8 +249,8 @@ class THAT_COUNT_PRED(torch.nn.Module):
         self.layer_leakyrelu = torch.nn.LeakyReLU()
         #
         ##
+        self.soft_max = torch.nn.Softmax()
         self.layer_output = torch.nn.Linear(256 + 32, var_dim_output)
-    
     #
     ##
     def forward(self,
@@ -294,21 +303,112 @@ class THAT_COUNT_PRED(torch.nn.Module):
         ## concatenate
         var_t = torch.concat([var_left, var_right], dim = -1)
         #
-        var_output = self.layer_output(var_t)
-        #
-        ##
-        return var_output
-
+        concatinated_logits_of_activities = self.layer_output(var_t)
+        extended_logits = concatinated_logits_of_activities.view(-1, 5, self.num_classes)
+        prob_activity_perperson = torch.nn.functional.softmax(extended_logits, dim=2)
+        pred_probs = prob_activity_perperson.sum(axis=1) # [batch_size, 10]        return pred_probs
+        return pred_probs
 #
 ##
-def run_that_count_pred(data_train_x,
+class CountBasedLoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, predictions, targets):
+        """
+        predictions: [batch_size, 10] (already summed in model's forward pass)
+        targets: [batch_size, 5, 10] (one-hot encoded)
+        """
+        # Sum the one-hot targets along person dimension to get true counts
+        # target_counts = targets.sum(dim=1)  # [batch_size, 10]
+
+        # Since the sum of predictions should equal 5 (total number of people),
+        # we can either normalize the predictions or use them directly
+        pred_counts = predictions  # Already normalized in forward pass
+
+        # You can use various loss functions here:
+        # Option 1: MSE Loss
+        # loss = F.mse_loss(pred_counts, targets)
+
+        # Option 2: L1 Loss
+        # loss = F.l1_loss(pred_counts, target_counts)
+
+        # Option 3: Smooth L1 Loss (what you're currently using)
+        loss = F.smooth_l1_loss(pred_counts, targets)
+
+        return loss
+# class CountBasedLoss(nn.Module):
+#     def __init__(self, count_weight=0.1):
+#         super().__init__()
+#         self.count_weight = count_weight
+#
+#     def compute_matching_loss(self, predictions, targets):
+#         """
+#         predictions: [batch_size, 5, 10] (after softmax)
+#         targets: [batch_size, 5] (class indices 0-9)
+#         """
+#         batch_size = predictions.size(0)
+#         total_loss = 0
+#
+#         for b in range(batch_size):
+#             cost_matrix = torch.zeros(5, 5, device=predictions.device)
+#             for i in range(5):
+#                 for j in range(5):
+#                     cost_matrix[i, j] = -predictions[b, i, targets[b, j]]
+#
+#             cost_matrix_np = cost_matrix.detach().cpu().numpy()
+#             pred_indices, target_indices = linear_sum_assignment(cost_matrix_np)
+#
+#             for pred_idx, target_idx in zip(pred_indices, target_indices):
+#                 loss = -torch.log(predictions[b, pred_idx, targets[b, target_idx]])
+#                 total_loss += loss
+#
+#         return total_loss / batch_size
+#
+#     def compute_count_loss(self, predictions, targets):
+#         """
+#         predictions: [batch_size, 5, 10] (after softmax)
+#         targets: [batch_size, 5] (class indices 0-9)
+#         """
+#         batch_size = predictions.size(0)
+#
+#         # Get predicted class distribution by averaging across the 5 predictions
+#         pred_probs = predictions.mean(dim=1)  # [batch_size, 10]
+#
+#         # Get target counts
+#         target_counts = torch.zeros((batch_size, 10), device=predictions.device)
+#         for b in range(batch_size):
+#             unique, counts = torch.unique(targets[b], return_counts=True)
+#             # Convert unique indices to long/int64 type
+#             unique = unique.long()
+#             target_counts[b, unique] = counts.float()  # Convert counts to float
+#         target_probs = target_counts / 5  # Normalize to get proportions
+#
+#         # KL divergence for the count distributions
+#         count_loss = F.kl_div(pred_probs.log(), target_probs, reduction='batchmean')
+#
+#         return count_loss
+#
+#     def forward(self, predictions, targets):
+#         # matching_loss = self.compute_matching_loss(predictions, targets)
+#         count_loss = self.compute_count_loss(predictions, targets)
+#         return count_loss
+#         # total_loss = matching_loss + self.count_weight * count_loss
+#         #
+#         # return total_loss, {
+#         #     'matching_loss': matching_loss.item(),
+#         #     'count_loss': count_loss.item()
+#         # }
+#         #
+
+def run_that_count_pred_contrained(data_train_x,
              data_train_y,
              data_test_x,
              data_test_y,
              var_repeat = 10):
     """
     [description]
-    : run WiFi-based model THAT
+    : run WiFi-based model THAT_DECODER_MULTIHEAD
     [parameter]
     : data_train_x: numpy array, CSI amplitude to train model
     : data_train_y: numpy array, labels to train model
@@ -330,7 +430,7 @@ def run_that_count_pred(data_train_x,
     data_test_x = data_test_x.reshape(data_test_x.shape[0], data_test_x.shape[1], -1)
     #
     ## shape for model
-    var_x_shape, var_y_shape = data_train_x[0].shape,[data_train_y[0].shape[1]]
+    var_x_shape, var_y_shape = data_train_x[0].shape,[data_train_y.shape[1]]
     #
     data_train_set = TensorDataset(torch.from_numpy(data_train_x), torch.from_numpy(data_train_y))
     data_test_set = TensorDataset(torch.from_numpy(data_test_x), torch.from_numpy(data_test_y))
@@ -339,8 +439,8 @@ def run_that_count_pred(data_train_x,
     ## ========================================= Train & Evaluate =========================================
     #
     ##
-    wandb.init(project="wifi-based-model-THAT", config={
-        "model": "THAT",
+    wandb.init(project="wifi-based-model-THAT_DECODER_MULTIHEAD", config={
+        "model": "THAT_DECODER_MULTIHEAD",
         "repeat_experiments": var_repeat,
     })
     result = {}
@@ -349,7 +449,7 @@ def run_that_count_pred(data_train_x,
     result_time_test = []
     #
     ##
-    var_macs, var_params = get_model_complexity_info(THAT_COUNT_PRED(var_x_shape, var_y_shape),
+    var_macs, var_params = get_model_complexity_info(THAT_COUNT_PRED_with_Constraint(var_x_shape, var_y_shape),
                                                      var_x_shape, as_strings = False)
     #
     print("Parameters:", var_params, "- FLOPs:", var_macs * 2)
@@ -363,19 +463,19 @@ def run_that_count_pred(data_train_x,
         #
         torch.random.manual_seed(var_r + 39)
         #
-        model_that = THAT_COUNT_PRED(var_x_shape, var_y_shape).to(device)
+        model_that = THAT_COUNT_PRED_with_Constraint(var_x_shape, var_y_shape).to(device)
         #
         optimizer = torch.optim.Adam(model_that.parameters(),
-                                     lr = preset["nn"]["lr"],
-                                     weight_decay = 0)
-        #
-        loss_mode = "count_classification"
-        loss = torch.nn.SmoothL1Loss()
-            # loss = torch.nn.MSELoss()
+                                     lr = 0.00003,
+                                     weight_decay = 0.0001 )
 
+        # loss_mode = "count_classification"
+        loss = CountBasedLoss().to(device)
+
+        loss_mode = "count_classification_withConstrain"
         run = wandb.init(
-            project="wifi-based-model-THAT",
-            name=f"Repeat_{var_r}" + loss_mode,
+            project="wifi-based-model-THAT_DECODER_MULTIHEAD",
+            name=f"Repeat_{var_r} " + loss_mode,
             config={
                 "model": "THAT_COUNT_PRED",
                 "repeat": var_r,
@@ -411,6 +511,7 @@ def run_that_count_pred(data_train_x,
         #
         # predict_test_y = torch.clamp(torch.round(predict_test_y), min=0, max=5).float()
         predict_test_y = predict_test_y.detach().cpu().numpy()
+        data_test_y_c = data_test_y
         #
         var_time_2 = time.time()
         #
@@ -418,9 +519,25 @@ def run_that_count_pred(data_train_x,
         #
         ##
 
-        data_test_y_c = data_test_y.sum(axis=1)
-        # data_test_y_c = data_test_y
         dict_true_acc = calculate_matrix_absolute_error(data_test_y_c, predict_test_y, var_mode=loss_mode)
+
+
+        # Create visualizations
+        viz_stats = visualize_model_performance(
+            predictions=predict_test_y,
+            targets=data_test_y_c,
+            save_dir=f'./visualizations/experiment_{var_r}_constrained_count',
+            var_mode=loss_mode
+        )
+
+        # Print additional statistics
+        print("\nDetailed Performance Analysis:")
+        print(f"Mean Error: {viz_stats['mean_error']:.4f} ± {viz_stats['error_std']:.4f}")
+        print("\nClass-wise Mean Absolute Error:")
+        for i, error in enumerate(viz_stats['class_wise_mae']):
+            print(f"Class {i}: {error:.4f}")
+        print(f"\nPerfect Predictions: {viz_stats['perfect_predictions'] * 100:.2f}%")
+
         wandb.log({
             "repeat": var_r,
             "train_time": var_time_1 - var_time_0,
@@ -447,42 +564,3 @@ def run_that_count_pred(data_train_x,
     })
     wandb.finish()
     return dict_true_acc
-    #
-    #     predict_test_y = (torch.sigmoid(predict_test_y) > preset["nn"]["threshold"]).float()
-    #     predict_test_y = predict_test_y.detach().cpu().numpy()
-    #     #
-    #     var_time_2 = time.time()
-    #     #
-    #     ## -------------------------------------- Evaluate ----------------------------------------
-    #     #
-    #     ##
-    #     data_test_y_c = data_test_y.reshape(-1, data_test_y.shape[-1])
-    #     predict_test_y_c = predict_test_y.reshape(-1, data_test_y.shape[-1])
-    #     #
-    #     ## Accuracy
-    #     result_acc = accuracy_score(data_test_y_c.astype(int),
-    #                                 predict_test_y_c.astype(int))
-    #     #
-    #     ## Report
-    #     result_dict = classification_report(data_test_y_c,
-    #                                         predict_test_y_c,
-    #                                         digits = 6,
-    #                                         zero_division = 0,
-    #                                         output_dict = True)
-    #     #
-    #     result["repeat_" + str(var_r)] = result_dict
-    #     #
-    #     result_accuracy.append(result_acc)
-    #     result_time_train.append(var_time_1 - var_time_0)
-    #     result_time_test.append(var_time_2 - var_time_1)
-    #     #
-    #     print("repeat_" + str(var_r), result_accuracy)
-    #     print(result)
-    # #
-    # ##
-    # result["accuracy"] = {"avg": np.mean(result_accuracy), "std": np.std(result_accuracy)}
-    # result["time_train"] = {"avg": np.mean(result_time_train), "std": np.std(result_time_train)}
-    # result["time_test"] = {"avg": np.mean(result_time_test), "std": np.std(result_time_test)}
-    # result["complexity"] = {"parameter": var_params, "flops": var_macs * 2}
-    # #
-    # return result
