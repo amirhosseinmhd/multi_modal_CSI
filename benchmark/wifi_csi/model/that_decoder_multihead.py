@@ -9,14 +9,17 @@ import time
 import torch
 import numpy as np
 #
+import torch.nn as nn
 from torch.utils.data import TensorDataset
 from ptflops import get_model_complexity_info
+from itertools import permutations
 from sklearn.metrics import classification_report, accuracy_score
 #
 from train import train
 from preset import preset
 from utils import *
 import wandb
+
 
 #
 ##
@@ -174,7 +177,7 @@ class Encoder(torch.nn.Module):
 ## ------------------------------------------------------------------------------------------ ##
 #
 ##
-class THAT(torch.nn.Module):
+class THAT_DECODER_MULTIHEAD(torch.nn.Module):
     #
     ##
     def __init__(self,
@@ -182,11 +185,18 @@ class THAT(torch.nn.Module):
                  var_y_shape):
         #
         ##
-        super(THAT, self).__init__()
+        super(THAT_DECODER_MULTIHEAD, self).__init__()
         #
         var_dim_feature = var_x_shape[-1]
         var_dim_time = var_x_shape[-2]
         var_dim_output = var_y_shape[-1]
+        self.num_heads = 5
+
+        # Replace the single output layer with multiple prediction heads
+        self.layer_output = torch.nn.ModuleList([
+            torch.nn.Linear(256 + 32, var_dim_output) for _ in range(self.num_heads)
+        ])
+
         #
         ## ---------------------------------------- left ------------------------------------------
         #
@@ -239,7 +249,7 @@ class THAT(torch.nn.Module):
         self.layer_leakyrelu = torch.nn.LeakyReLU()
         #
         ##
-        self.layer_output = torch.nn.Linear(256 + 32, var_dim_output)
+        # self.layer_output = torch.nn.Linear(256 + 32, var_dim_output)
 
     #
     ##
@@ -293,19 +303,56 @@ class THAT(torch.nn.Module):
         ## concatenate
         var_t = torch.concat([var_left, var_right], dim=-1)
         #
-        var_output = self.layer_output(var_t)
+        var_outputs = [head(var_t) for head in self.layer_output]
+        var_output = torch.stack(var_outputs, dim=1)  # Shape: (batch_size, num_heads, var_dim_output)
         #
         ##
         return var_output
 
 
+class PermutationMatchingLoss(nn.Module):
+    def __init__(self):
+        super(PermutationMatchingLoss, self).__init__()
+        self.ce_loss = nn.CrossEntropyLoss(reduction='none')
+
+    def forward(self, predictions, targets):
+        batch_size, num_heads, num_classes = predictions.shape
+        assert num_heads == 5, "Number of prediction heads must be 5"
+        if targets.shape != (batch_size, num_heads, num_classes):
+            print("target miss match")
+            print(targets.shape)
+        all_permutations = list(permutations(range(num_heads)))
+        best_loss = torch.full((batch_size,), float('inf'), device=predictions.device)
+        best_perm_indices = torch.zeros(batch_size, dtype=torch.long, device=predictions.device)
+
+        for batch_idx in range(batch_size):
+            for perm_idx, perm in enumerate(all_permutations):
+                perm_predictions = predictions[batch_idx, perm, :]
+                perm_targets = targets[batch_idx]
+                loss = self.ce_loss(perm_predictions, perm_targets.argmax(dim=1))
+                loss = loss.mean()  # Average loss across heads for this permutation
+                if loss < best_loss[batch_idx]:
+                    best_loss[batch_idx] = loss
+                    best_perm_indices[batch_idx] = perm_idx
+
+        # Create a new tensor with the best permutations
+        best_predictions = torch.zeros_like(predictions)
+        for batch_idx in range(batch_size):
+            best_perm = all_permutations[best_perm_indices[batch_idx]]
+            best_predictions[batch_idx] = predictions[batch_idx, best_perm, :]
+
+        # Compute the final loss using the best permutations
+        final_loss = self.ce_loss(best_predictions.view(-1, num_classes), targets.view(-1, num_classes).argmax(dim=1))
+        return final_loss.mean()
+
+
 #
 ##
-def run_that(data_train_x,
-             data_train_y,
-             data_test_x,
-             data_test_y,
-             var_repeat=10):
+def run_that_decoder(data_train_x,
+                       data_train_y,
+                       data_test_x,
+                       data_test_y,
+                       var_repeat=10):
     """
     [description]
     : run WiFi-based model THAT_DECODER_MULTIHEAD
@@ -330,7 +377,7 @@ def run_that(data_train_x,
     data_test_x = data_test_x.reshape(data_test_x.shape[0], data_test_x.shape[1], -1)
     #
     ## shape for model
-    var_x_shape, var_y_shape = data_train_x[0].shape, data_train_y[0].reshape(-1).shape
+    var_x_shape, var_y_shape = data_train_x[0].shape, [data_train_y[0].shape[1]]
     #
     data_train_set = TensorDataset(torch.from_numpy(data_train_x), torch.from_numpy(data_train_y))
     data_test_set = TensorDataset(torch.from_numpy(data_test_x), torch.from_numpy(data_test_y))
@@ -339,18 +386,17 @@ def run_that(data_train_x,
     ## ========================================= Train & Evaluate =========================================
     #
     ##
-    print("Running main THAT_DECODER_MULTIHEAD model based on BCE logit loss")
-    wandb.init(project="wifi-based-model-THAT_DECODER_MULTIHEAD", config={
-        "model": "THAT_DECODER_MULTIHEAD",
-        "repeat_experiments": var_repeat,
-    })
+    # wandb.init(project="wifi-based-model-THAT_DECODER_MULTIHEAD", config={
+    #     "model": "THAT_multi_head",
+    #     "repeat_experiments": var_repeat,
+    # })
     result = {}
     result_accuracy = []
     result_time_train = []
     result_time_test = []
     #
     ##
-    var_macs, var_params = get_model_complexity_info(THAT(var_x_shape, var_y_shape),
+    var_macs, var_params = get_model_complexity_info(THAT_DECODER_MULTIHEAD(var_x_shape, var_y_shape),
                                                      var_x_shape, as_strings=False)
     #
     print("Parameters:", var_params, "- FLOPs:", var_macs * 2)
@@ -360,43 +406,44 @@ def run_that(data_train_x,
         #
         ##
         print("Repeat", var_r)
-
-        #
-        torch.random.manual_seed(var_r + 39)
-        #
-        model_that = THAT(var_x_shape, var_y_shape).to(device)
-        #
-        optimizer = torch.optim.Adam(model_that.parameters(),
-                                     lr = preset["nn"]["lr"],
-                                     weight_decay = 0)
-        #
-        loss_mode = "baseline"
-        loss = torch.nn.BCEWithLogitsLoss(pos_weight = torch.tensor([4] * var_y_shape[-1]).to(device))
-        # loss = torch.nn.MSELoss()
-        # loss = torch.nn.SmoothL1Loss()
         run = wandb.init(
             project="wifi-based-model-THAT_DECODER_MULTIHEAD",
-            name=f"Repeat_{var_r}" + loss_mode,
+            name=f"Repeat_{var_r}",
             config={
-                "model": "THAT_BCE",
+                "model": "THAT_MultiHead",
                 "repeat": var_r,
             },
             reinit=True  # Allow multiple wandb.init() calls in the same process
         )
+        #
+        torch.random.manual_seed(var_r + 39)
+        #
+        model_that = THAT_DECODER_MULTIHEAD(var_x_shape, var_y_shape).to(device)
+        #
+        optimizer = torch.optim.Adam(model_that.parameters(),
+                                     lr=preset["nn"]["lr"],
+                                     weight_decay=0)
+        #
+        # loss = torch.nn.BCEWithLogitsLoss(pos_weight = torch.tensor([4] * var_y_shape[-1]).to(device))
+        # loss = torch.nn.MSELoss()
+        # loss = torch.nn.SmoothL1Loss()
+        loss = PermutationMatchingLoss()
+        var_mode = "multi_head"
+
         var_time_0 = time.time()
         #
         ## ---------------------------------------- Train -----------------------------------------
         #
-        var_best_weight = train(model = model_that,
-                                optimizer = optimizer,
-                                loss = loss,
-                                data_train_set = data_train_set,
-                                data_test_set = data_test_set,
-                                var_threshold = preset["nn"]["threshold"],
-                                var_batch_size = preset["nn"]["batch_size"],
-                                var_epochs = preset["nn"]["epoch"],
-                                device = device,
-                                var_mode = loss_mode)
+        var_best_weight = train(model=model_that,
+                                optimizer=optimizer,
+                                loss=loss,
+                                data_train_set=data_train_set,
+                                data_test_set=data_test_set,
+                                var_threshold=preset["nn"]["threshold"],
+                                var_batch_size=preset["nn"]["batch_size"],
+                                var_epochs=preset["nn"]["epoch"],
+                                device=device,
+                                var_mode=var_mode)
         #
         var_time_1 = time.time()
         #
@@ -407,6 +454,7 @@ def run_that(data_train_x,
         with torch.no_grad():
             predict_test_y = model_that(torch.from_numpy(data_test_x).to(device))
         #
+        # predict_test_y = torch.clamp(torch.round(predict_test_y), min=0, max=5).float()
         predict_test_y = predict_test_y.detach().cpu().numpy()
         #
         var_time_2 = time.time()
@@ -415,7 +463,8 @@ def run_that(data_train_x,
         #
         ##
 
-        dict_true_acc = calculate_matrix_absolute_error(data_test_y, predict_test_y, var_mode=loss_mode, var_threshold= preset["nn"]["threshold"])
+        # data_test_y_c = data_test_y.sum(axis=1)
+        dict_true_acc = calculate_matrix_absolute_error(data_test_y, predict_test_y, var_mode=var_mode)
         wandb.log({
             "repeat": var_r,
             "train_time": var_time_1 - var_time_0,
@@ -443,17 +492,14 @@ def run_that(data_train_x,
     viz_stats = visualize_model_performance(
         y_pred=predict_test_y,
         y_true=data_test_y,
-        var_mode=loss_mode,
-        save_dir=f'./visualizations/experiment_{var_r}_{loss_mode}'
+        var_mode=var_mode,
+        save_dir=f'./visualizations/experiment_{var_r}_{var_mode}'
     )
-
-    # Print additional statistics
     print("\nDetailed Performance Analysis:")
     print(f"Mean Error: {viz_stats['mean_error']:.4f} ± {viz_stats['error_std']:.4f}")
     print("\nClass-wise Mean Absolute Error:")
     for i, error in enumerate(viz_stats['class_wise_mae']):
         print(f"Class {i}: {error:.4f}")
     print(f"\nPerfect Predictions: {viz_stats['perfect_predictions'] * 100:.2f}%")
-
     wandb.finish()
     return dict_true_acc

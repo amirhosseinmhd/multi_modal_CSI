@@ -11,6 +11,7 @@ from sklearn.model_selection import train_test_split
 from model import *
 from preset import preset
 from load_data import load_data_x, load_data_y, encode_data_y
+from utils import *
 #
 ##
 def parse_args():
@@ -57,9 +58,13 @@ def run():
     ## load CSI amplitude
     data_x = load_data_x(preset["path"]["data_x"], var_label_list)
     #
-    ## encode labels
     data_y = encode_data_y(data_pd_y, var_task)
     #
+    if var_model == "THAT_MULTI_HEAD":
+        data_y = reduce_dataset(data_y) # CHECKKKKKKKK HEREEEEEE
+    elif var_model == "THAT_COUNT_CONSTRAINED":
+        data_y_red = reduce_dataset(data_y)
+        data_y = data_y_red.sum(axis=1)
     ## a training set (80%) and a test set (20%)
     data_train_x, data_test_x, data_train_y, data_test_y = train_test_split(data_x, data_y,
                                                                             test_size = 0.2,
@@ -81,9 +86,17 @@ def run():
     #
     elif var_model == "ABLSTM": run_model = run_ablstm
     #
-    elif var_model == "THAT": run_model = run_that
+    elif var_model == "THAT_DECODER_MULTIHEAD": run_model = run_that
     #
     elif var_model == "SSL": run_model = run_ssl
+    #
+    elif var_model == "THAT_COUNT": run_model = run_that_count_pred
+    #
+    elif var_model == "THAT_MULTI_HEAD": run_model = run_that_multihead
+    #
+    elif var_model == "THAT_COUNT_CONSTRAINED": run_model = run_that_count_pred_contrained
+
+
 
     #
     ## run WiFi-based model

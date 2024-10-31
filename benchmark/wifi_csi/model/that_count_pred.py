@@ -9,15 +9,16 @@ import time
 import torch
 import numpy as np
 #
+import torch.nn as nn
 from torch.utils.data import TensorDataset
 from ptflops import get_model_complexity_info
+from itertools import permutations
 from sklearn.metrics import classification_report, accuracy_score
 #
 from train import train
 from preset import preset
 from utils import *
 import wandb
-
 #
 ##
 ## ------------------------------------------------------------------------------------------ ##
@@ -28,56 +29,58 @@ import wandb
 class Gaussian_Position(torch.nn.Module):
     #
     ##
-    def __init__(self,
+    def __init__(self, 
                  var_dim_feature,
-                 var_dim_time,
-                 var_num_gaussian=10):
+                 var_dim_time, 
+                 var_num_gaussian = 10):
         #
         ##
         super(Gaussian_Position, self).__init__()
         #
         ## var_embedding: shape (var_dim_k, var_dim_feature)
-        var_embedding = torch.zeros([var_num_gaussian, var_dim_feature], dtype=torch.float)
-        self.var_embedding = torch.nn.Parameter(var_embedding, requires_grad=True)
+        var_embedding = torch.zeros([var_num_gaussian, var_dim_feature], dtype = torch.float)
+        self.var_embedding = torch.nn.Parameter(var_embedding, requires_grad = True)
         torch.nn.init.xavier_uniform_(self.var_embedding)
         #
         ## var_position: shape (var_dim_time, var_dim_k)
         var_position = torch.arange(0.0, var_dim_time).unsqueeze(1).repeat(1, var_num_gaussian)
-        self.var_position = torch.nn.Parameter(var_position, requires_grad=False)
+        self.var_position = torch.nn.Parameter(var_position, requires_grad = False)
         #
         ## var_mu: shape (1, var_dim_k)
-        var_mu = torch.arange(0.0, var_dim_time, var_dim_time / var_num_gaussian).unsqueeze(0)
-        self.var_mu = torch.nn.Parameter(var_mu, requires_grad=True)
+        var_mu = torch.arange(0.0, var_dim_time, var_dim_time/var_num_gaussian).unsqueeze(0)
+        self.var_mu = torch.nn.Parameter(var_mu, requires_grad = True)
         #
         ## var_sigma: shape (1, var_dim_k)
         var_sigma = torch.tensor([50.0] * var_num_gaussian).unsqueeze(0)
-        self.var_sigma = torch.nn.Parameter(var_sigma, requires_grad=True)
+        self.var_sigma = torch.nn.Parameter(var_sigma, requires_grad = True)
 
     #
     ##
     def calculate_pdf(self,
-                      var_position,
-                      var_mu,
+                      var_position, 
+                      var_mu, 
                       var_sigma):
         #
         ##
-        var_pdf = var_position - var_mu  # (position-mu)
+        var_pdf = var_position - var_mu                 # (position-mu)
         #
-        var_pdf = - var_pdf * var_pdf  # -(position-mu)^2
+        var_pdf = - var_pdf * var_pdf                   # -(position-mu)^2
         #
-        var_pdf = var_pdf / var_sigma / var_sigma / 2  # -(position-mu)^2 / (2*sigma^2)
+        var_pdf = var_pdf / var_sigma / var_sigma / 2   # -(position-mu)^2 / (2*sigma^2)
         #
-        var_pdf = var_pdf - torch.log(var_sigma)  # -(position-mu)^2 / (2*sigma^2) - log(sigma)
+        var_pdf = var_pdf - torch.log(var_sigma)        # -(position-mu)^2 / (2*sigma^2) - log(sigma)
         #
         return var_pdf
 
     #
     ##
-    def forward(self,
+    def forward(self, 
                 var_input):
-        var_pdf = self.calculate_pdf(self.var_position, self.var_mu, self.var_sigma)
+        
 
-        var_pdf = torch.softmax(var_pdf, dim=-1)
+        var_pdf = self.calculate_pdf(self.var_position, self.var_mu, self.var_sigma)
+        
+        var_pdf = torch.softmax(var_pdf, dim = -1)
         #
         var_position_encoding = torch.matmul(var_pdf, self.var_embedding)
         #
@@ -85,7 +88,6 @@ class Gaussian_Position(torch.nn.Module):
         var_output = var_input + var_position_encoding.unsqueeze(0)
         #
         return var_output
-
 
 #
 ##
@@ -97,19 +99,19 @@ class Gaussian_Position(torch.nn.Module):
 class Encoder(torch.nn.Module):
     #
     ##
-    def __init__(self,
-                 var_dim_feature,
-                 var_num_head=10,
-                 var_size_cnn=[1, 3, 5]):
+    def __init__(self, 
+                 var_dim_feature, 
+                 var_num_head = 10,
+                 var_size_cnn = [1, 3, 5]):
         #
         ##
         super(Encoder, self).__init__()
         #
         ##
-        self.layer_norm_0 = torch.nn.LayerNorm(var_dim_feature, eps=1e-6)
-        self.layer_attention = torch.nn.MultiheadAttention(var_dim_feature,
+        self.layer_norm_0 = torch.nn.LayerNorm(var_dim_feature, eps = 1e-6)
+        self.layer_attention = torch.nn.MultiheadAttention(var_dim_feature, 
                                                            var_num_head,
-                                                           batch_first=True)
+                                                           batch_first = True)
         #
         self.layer_dropout_0 = torch.nn.Dropout(0.1)
         #
@@ -122,8 +124,8 @@ class Encoder(torch.nn.Module):
             #
             layer = torch.nn.Sequential(torch.nn.Conv1d(var_dim_feature,
                                                         var_dim_feature,
-                                                        var_size,
-                                                        padding="same"),
+                                                        var_size, 
+                                                        padding = "same"),
                                         torch.nn.BatchNorm1d(var_dim_feature),
                                         torch.nn.Dropout(0.1),
                                         torch.nn.LeakyReLU())
@@ -135,7 +137,7 @@ class Encoder(torch.nn.Module):
 
     #
     ##
-    def forward(self,
+    def forward(self, 
                 var_input):
         #
         ##
@@ -149,14 +151,14 @@ class Encoder(torch.nn.Module):
         #
         var_t = var_t + var_input
         #
-        ##
+        ## 
         var_s = self.layer_norm_1(var_t)
 
         var_s = torch.permute(var_s, (0, 2, 1))
         #
-        var_c = torch.stack([layer(var_s) for layer in self.layer_cnn], dim=0)
+        var_c = torch.stack([layer(var_s) for layer in self.layer_cnn], dim = 0)
         #
-        var_s = torch.sum(var_c, dim=0) / len(self.layer_cnn)
+        var_s = torch.sum(var_c, dim = 0) / len(self.layer_cnn)
         #
         var_s = self.layer_dropout_1(var_s)
 
@@ -165,8 +167,7 @@ class Encoder(torch.nn.Module):
         var_output = var_s + var_t
         #
         return var_output
-
-
+    
 #
 ##
 ## ------------------------------------------------------------------------------------------ ##
@@ -174,15 +175,15 @@ class Encoder(torch.nn.Module):
 ## ------------------------------------------------------------------------------------------ ##
 #
 ##
-class THAT(torch.nn.Module):
+class THAT_COUNT_PRED(torch.nn.Module):
     #
     ##
-    def __init__(self,
-                 var_x_shape,
+    def __init__(self, 
+                 var_x_shape, 
                  var_y_shape):
         #
         ##
-        super(THAT, self).__init__()
+        super(THAT_COUNT_PRED, self).__init__()
         #
         var_dim_feature = var_x_shape[-1]
         var_dim_time = var_x_shape[-2]
@@ -190,48 +191,48 @@ class THAT(torch.nn.Module):
         #
         ## ---------------------------------------- left ------------------------------------------
         #
-        self.layer_left_pooling = torch.nn.AvgPool1d(kernel_size=20, stride=20)
+        self.layer_left_pooling = torch.nn.AvgPool1d(kernel_size = 20, stride = 20)
         self.layer_left_gaussian = Gaussian_Position(var_dim_feature, var_dim_time // 20)
         #
         var_num_left = 4
         var_dim_left = var_dim_feature
-        self.layer_left_encoder = torch.nn.ModuleList([Encoder(var_dim_feature=var_dim_left,
-                                                               var_num_head=10,
-                                                               var_size_cnn=[1, 3, 5])
-                                                       for _ in range(var_num_left)])
+        self.layer_left_encoder = torch.nn.ModuleList([Encoder(var_dim_feature = var_dim_left,
+                                                               var_num_head = 10,
+                                                               var_size_cnn = [1, 3, 5])
+                                                               for _ in range(var_num_left)])
         #
-        self.layer_left_norm = torch.nn.LayerNorm(var_dim_left, eps=1e-6)
+        self.layer_left_norm = torch.nn.LayerNorm(var_dim_left, eps = 1e-6)
         #
-        self.layer_left_cnn_0 = torch.nn.Conv1d(in_channels=var_dim_left,
-                                                out_channels=128,
-                                                kernel_size=8)
-
-        self.layer_left_cnn_1 = torch.nn.Conv1d(in_channels=var_dim_left,
-                                                out_channels=128,
-                                                kernel_size=16)
+        self.layer_left_cnn_0 =  torch.nn.Conv1d(in_channels = var_dim_left,
+                                                 out_channels = 128,
+                                                 kernel_size = 8)
+        
+        self.layer_left_cnn_1 =  torch.nn.Conv1d(in_channels = var_dim_left,
+                                                 out_channels = 128,
+                                                 kernel_size = 16)
         #
         self.layer_left_dropout = torch.nn.Dropout(0.5)
         #
         ## --------------------------------------- right ------------------------------------------
         #
-        self.layer_right_pooling = torch.nn.AvgPool1d(kernel_size=20, stride=20)
+        self.layer_right_pooling = torch.nn.AvgPool1d(kernel_size = 20, stride = 20)
         #
-        var_num_right = 1
+        var_num_right = 1 
         var_dim_right = var_dim_time // 20
-        self.layer_right_encoder = torch.nn.ModuleList([Encoder(var_dim_feature=var_dim_right,
-                                                                var_num_head=10,
-                                                                var_size_cnn=[1, 2, 3])
-                                                        for _ in range(var_num_right)])
+        self.layer_right_encoder = torch.nn.ModuleList([Encoder(var_dim_feature = var_dim_right,
+                                                                var_num_head = 10,
+                                                                var_size_cnn = [1, 2, 3])
+                                                                for _ in range(var_num_right)])
         #
-        self.layer_right_norm = torch.nn.LayerNorm(var_dim_right, eps=1e-6)
+        self.layer_right_norm = torch.nn.LayerNorm(var_dim_right, eps = 1e-6)
         #
-        self.layer_right_cnn_0 = torch.nn.Conv1d(in_channels=var_dim_right,
-                                                 out_channels=16,
-                                                 kernel_size=2)
-
-        self.layer_right_cnn_1 = torch.nn.Conv1d(in_channels=var_dim_right,
-                                                 out_channels=16,
-                                                 kernel_size=4)
+        self.layer_right_cnn_0 =  torch.nn.Conv1d(in_channels = var_dim_right,
+                                                  out_channels = 16,
+                                                  kernel_size = 2)
+        
+        self.layer_right_cnn_1 =  torch.nn.Conv1d(in_channels = var_dim_right,
+                                                  out_channels = 16,
+                                                  kernel_size = 4)
         #
         self.layer_right_dropout = torch.nn.Dropout(0.5)
         #
@@ -240,14 +241,14 @@ class THAT(torch.nn.Module):
         #
         ##
         self.layer_output = torch.nn.Linear(256 + 32, var_dim_output)
-
+    
     #
     ##
     def forward(self,
                 var_input):
         #
         ##
-        var_t = var_input  # shape (batch_size, time_steps, features)
+        var_t = var_input   # shape (batch_size, time_steps, features)
         #
         ## ---------------------------------------- left ------------------------------------------
         #
@@ -265,15 +266,15 @@ class THAT(torch.nn.Module):
         var_left_0 = self.layer_leakyrelu(self.layer_left_cnn_0(var_left))
         var_left_1 = self.layer_leakyrelu(self.layer_left_cnn_1(var_left))
         #
-        var_left_0 = torch.sum(var_left_0, dim=-1)
-        var_left_1 = torch.sum(var_left_1, dim=-1)
+        var_left_0 = torch.sum(var_left_0, dim = -1)
+        var_left_1 = torch.sum(var_left_1, dim = -1)
         #
-        var_left = torch.concat([var_left_0, var_left_1], dim=-1)
+        var_left = torch.concat([var_left_0, var_left_1], dim = -1)
         var_left = self.layer_left_dropout(var_left)
         #
         ## --------------------------------------- right ------------------------------------------
         #
-        var_right = torch.permute(var_t, (0, 2, 1))  # shape (batch_size, features, time_steps)
+        var_right = torch.permute(var_t, (0, 2, 1)) # shape (batch_size, features, time_steps)
         var_right = self.layer_right_pooling(var_right)
         #
         for layer in self.layer_right_encoder: var_right = layer(var_right)
@@ -284,28 +285,27 @@ class THAT(torch.nn.Module):
         var_right_0 = self.layer_leakyrelu(self.layer_right_cnn_0(var_right))
         var_right_1 = self.layer_leakyrelu(self.layer_right_cnn_1(var_right))
         #
-        var_right_0 = torch.sum(var_right_0, dim=-1)
-        var_right_1 = torch.sum(var_right_1, dim=-1)
+        var_right_0 = torch.sum(var_right_0, dim = -1)
+        var_right_1 = torch.sum(var_right_1, dim = -1)
         #
-        var_right = torch.concat([var_right_0, var_right_1], dim=-1)
+        var_right = torch.concat([var_right_0, var_right_1], dim = -1)
         var_right = self.layer_right_dropout(var_right)
         #
         ## concatenate
-        var_t = torch.concat([var_left, var_right], dim=-1)
+        var_t = torch.concat([var_left, var_right], dim = -1)
         #
         var_output = self.layer_output(var_t)
         #
         ##
         return var_output
 
-
 #
 ##
-def run_that(data_train_x,
+def run_that_count_pred(data_train_x,
              data_train_y,
              data_test_x,
              data_test_y,
-             var_repeat=10):
+             var_repeat = 10):
     """
     [description]
     : run WiFi-based model THAT_DECODER_MULTIHEAD
@@ -330,7 +330,7 @@ def run_that(data_train_x,
     data_test_x = data_test_x.reshape(data_test_x.shape[0], data_test_x.shape[1], -1)
     #
     ## shape for model
-    var_x_shape, var_y_shape = data_train_x[0].shape, data_train_y[0].reshape(-1).shape
+    var_x_shape, var_y_shape = data_train_x[0].shape,[data_train_y[0].shape[1]]
     #
     data_train_set = TensorDataset(torch.from_numpy(data_train_x), torch.from_numpy(data_train_y))
     data_test_set = TensorDataset(torch.from_numpy(data_test_x), torch.from_numpy(data_test_y))
@@ -339,7 +339,6 @@ def run_that(data_train_x,
     ## ========================================= Train & Evaluate =========================================
     #
     ##
-    print("Running main THAT_DECODER_MULTIHEAD model based on BCE logit loss")
     wandb.init(project="wifi-based-model-THAT_DECODER_MULTIHEAD", config={
         "model": "THAT_DECODER_MULTIHEAD",
         "repeat_experiments": var_repeat,
@@ -350,8 +349,8 @@ def run_that(data_train_x,
     result_time_test = []
     #
     ##
-    var_macs, var_params = get_model_complexity_info(THAT(var_x_shape, var_y_shape),
-                                                     var_x_shape, as_strings=False)
+    var_macs, var_params = get_model_complexity_info(THAT_COUNT_PRED(var_x_shape, var_y_shape),
+                                                     var_x_shape, as_strings = False)
     #
     print("Parameters:", var_params, "- FLOPs:", var_macs * 2)
     #
@@ -364,25 +363,28 @@ def run_that(data_train_x,
         #
         torch.random.manual_seed(var_r + 39)
         #
-        model_that = THAT(var_x_shape, var_y_shape).to(device)
+        model_that = THAT_COUNT_PRED(var_x_shape, var_y_shape).to(device)
         #
         optimizer = torch.optim.Adam(model_that.parameters(),
                                      lr = preset["nn"]["lr"],
                                      weight_decay = 0)
         #
-        loss_mode = "baseline"
-        loss = torch.nn.BCEWithLogitsLoss(pos_weight = torch.tensor([4] * var_y_shape[-1]).to(device))
-        # loss = torch.nn.MSELoss()
-        # loss = torch.nn.SmoothL1Loss()
+        loss_mode = "count_classification"
+        loss = torch.nn.SmoothL1Loss()
+            # loss = torch.nn.MSELoss()
+
         run = wandb.init(
             project="wifi-based-model-THAT_DECODER_MULTIHEAD",
             name=f"Repeat_{var_r}" + loss_mode,
             config={
-                "model": "THAT_BCE",
+                "model": "THAT_COUNT_PRED",
                 "repeat": var_r,
             },
             reinit=True  # Allow multiple wandb.init() calls in the same process
         )
+        # loss = torch.nn.BCEWithLogitsLoss(pos_weight = torch.tensor([4] * var_y_shape[-1]).to(device))
+        # loss = PermutationMatchingLoss()
+
         var_time_0 = time.time()
         #
         ## ---------------------------------------- Train -----------------------------------------
@@ -407,6 +409,7 @@ def run_that(data_train_x,
         with torch.no_grad():
             predict_test_y = model_that(torch.from_numpy(data_test_x).to(device))
         #
+        # predict_test_y = torch.clamp(torch.round(predict_test_y), min=0, max=5).float()
         predict_test_y = predict_test_y.detach().cpu().numpy()
         #
         var_time_2 = time.time()
@@ -415,7 +418,9 @@ def run_that(data_train_x,
         #
         ##
 
-        dict_true_acc = calculate_matrix_absolute_error(data_test_y, predict_test_y, var_mode=loss_mode, var_threshold= preset["nn"]["threshold"])
+        data_test_y_c = data_test_y.sum(axis=1)
+        # data_test_y_c = data_test_y
+        dict_true_acc = calculate_matrix_absolute_error(data_test_y_c, predict_test_y, var_mode=loss_mode)
         wandb.log({
             "repeat": var_r,
             "train_time": var_time_1 - var_time_0,
@@ -440,20 +445,5 @@ def run_that(data_train_x,
         "avg_train_time": sum(result_time_train) / len(result_time_train),
         "avg_test_time": sum(result_time_test) / len(result_time_test),
     })
-    viz_stats = visualize_model_performance(
-        y_pred=predict_test_y,
-        y_true=data_test_y,
-        var_mode=loss_mode,
-        save_dir=f'./visualizations/experiment_{var_r}_{loss_mode}'
-    )
-
-    # Print additional statistics
-    print("\nDetailed Performance Analysis:")
-    print(f"Mean Error: {viz_stats['mean_error']:.4f} ± {viz_stats['error_std']:.4f}")
-    print("\nClass-wise Mean Absolute Error:")
-    for i, error in enumerate(viz_stats['class_wise_mae']):
-        print(f"Class {i}: {error:.4f}")
-    print(f"\nPerfect Predictions: {viz_stats['perfect_predictions'] * 100:.2f}%")
-
     wandb.finish()
     return dict_true_acc
