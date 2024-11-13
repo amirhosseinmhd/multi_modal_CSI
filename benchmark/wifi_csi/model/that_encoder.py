@@ -1,6 +1,6 @@
 """
 [file]          that.py
-[description]   implement and evaluate WiFi-based model THAT_DECODER_MULTIHEAD
+[description]   implement and evaluate WiFi-based model THAT_ENCODER
                 https://github.com/windofshadow/THAT
 """
 #
@@ -173,11 +173,11 @@ class Encoder(torch.nn.Module):
 #
 ##
 ## ------------------------------------------------------------------------------------------ ##
-## ---------------------------------------- THAT_DECODER_MULTIHEAD -------------------------------------------- ##
+## ---------------------------------------- THAT_ENCODER -------------------------------------------- ##
 ## ------------------------------------------------------------------------------------------ ##
 #
 ##
-class THAT_DECODER_MULTIHEAD(torch.nn.Module):
+class THAT_ENCODER(torch.nn.Module):
     #
     ##
     def __init__(self,
@@ -185,17 +185,17 @@ class THAT_DECODER_MULTIHEAD(torch.nn.Module):
                  var_y_shape):
         #
         ##
-        super(THAT_DECODER_MULTIHEAD, self).__init__()
+        super(THAT_ENCODER, self).__init__()
         #
         var_dim_feature = var_x_shape[-1]
         var_dim_time = var_x_shape[-2]
         var_dim_output = var_y_shape[-1]
-        self.num_heads = 5
+    #    self.num_heads = 5
 
         # Replace the single output layer with multiple prediction heads
-        self.layer_output = torch.nn.ModuleList([
-            torch.nn.Linear(256 + 32, var_dim_output) for _ in range(self.num_heads)
-        ])
+    #    self.layer_output = torch.nn.ModuleList([
+    #        torch.nn.Linear(256 + 32, var_dim_output) for _ in range(self.num_heads)
+     #   ])
 
         #
         ## ---------------------------------------- left ------------------------------------------
@@ -224,10 +224,13 @@ class THAT_DECODER_MULTIHEAD(torch.nn.Module):
         #
         ## --------------------------------------- right ------------------------------------------
         #
-        self.layer_right_pooling = torch.nn.AvgPool1d(kernel_size=20, stride=20)
+        self.layer_right_pooling = torch.nn.AdaptiveAvgPool1d(270)
+            # torch.nn.AvgPool1d(kernel_size=20, stride=20))
+        # self.layer_left_pooling = torch.nn.AdaptiveAvgPool1d(270)
+
         #
         var_num_right = 1
-        var_dim_right = var_dim_time // 20
+        var_dim_right = 270
         self.layer_right_encoder = torch.nn.ModuleList([Encoder(var_dim_feature=var_dim_right,
                                                                 var_num_head=10,
                                                                 var_size_cnn=[1, 2, 3])
@@ -269,46 +272,176 @@ class THAT_DECODER_MULTIHEAD(torch.nn.Module):
         #
         for layer in self.layer_left_encoder: var_left = layer(var_left)
         #
-        var_left = self.layer_left_norm(var_left)
-        #
-        var_left = torch.permute(var_left, (0, 2, 1))
-        var_left_0 = self.layer_leakyrelu(self.layer_left_cnn_0(var_left))
-        var_left_1 = self.layer_leakyrelu(self.layer_left_cnn_1(var_left))
-        #
-        var_left_0 = torch.sum(var_left_0, dim=-1)
-        var_left_1 = torch.sum(var_left_1, dim=-1)
-        #
-        var_left = torch.concat([var_left_0, var_left_1], dim=-1)
-        var_left = self.layer_left_dropout(var_left)
+        var_left = self.layer_left_norm(var_left) # 150 x 270
+        # 270 is channel here so each row of 150 will be one sample
+
+        """     #
+                # var_left = torch.permute(var_left, (0, 2, 1)) # 270 x 150
+                # var_left_0 = self.layer_leakyrelu(self.layer_left_cnn_0(var_left)) #torch.Size([1, 128, 143])
+                # this cnn has 270 channel and 150 time stamp
+        
+                # var_left_1 = self.layer_leakyrelu(self.layer_left_cnn_1(var_left))
+                # #
+                # var_left_0 = torch.sum(var_left_0, dim=-1) 128
+                # var_left_1 = torch.sum(var_left_1, dim=-1) 128
+                # #
+                # var_left = torch.concat([var_left_0, var_left_1], dim=-1)
+                # var_left = self.layer_left_dropout(var_left)
+        """
+
         #
         ## --------------------------------------- right ------------------------------------------
         #
         var_right = torch.permute(var_t, (0, 2, 1))  # shape (batch_size, features, time_steps)
-        var_right = self.layer_right_pooling(var_right)
+        var_right = self.layer_right_pooling(var_right) # ([1, 270, 150])
         #
         for layer in self.layer_right_encoder: var_right = layer(var_right)
         #
-        var_right = self.layer_right_norm(var_right)
+        var_right = self.layer_right_norm(var_right)# torch.Size([1, 270 150)]  # 150 is the channel here -> now turned into 270 by 270
         #
-        var_right = torch.permute(var_right, (0, 2, 1))
-        var_right_0 = self.layer_leakyrelu(self.layer_right_cnn_0(var_right))
-        var_right_1 = self.layer_leakyrelu(self.layer_right_cnn_1(var_right))
-        #
-        var_right_0 = torch.sum(var_right_0, dim=-1)
-        var_right_1 = torch.sum(var_right_1, dim=-1)
-        #
-        var_right = torch.concat([var_right_0, var_right_1], dim=-1)
-        var_right = self.layer_right_dropout(var_right)
-        #
-        ## concatenate
-        var_t = torch.concat([var_left, var_right], dim=-1)
-        #
-        var_outputs = [head(var_t) for head in self.layer_output]
-        var_output = torch.stack(var_outputs, dim=1)  # Shape: (batch_size, num_heads, var_dim_output)
-        #
-        ##
-        return var_output
+        # var_right = torch.permute(var_right, (0, 2, 1))
 
+        var_t = torch.concat([var_left, var_right], dim=1)
+
+        # here add the decoder to the model.
+        ##
+        return var_t
+
+
+
+class TransformerDecoder(nn.Module):
+    def __init__(self, d_model=270, nhead=8, num_decoder_layers=6, dim_feedforward=2048, dropout=0.1):
+        super().__init__()
+        self.d_model = d_model
+        self.nhead = nhead
+
+        # Create object queries - learnable parameters
+        self.query_embed = nn.Parameter(torch.randn(5, d_model))  # 10 object queries
+
+        # Create decoder layers
+        decoder_layer = TransformerDecoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout
+        )
+        self.decoder_layers = nn.ModuleList([
+            decoder_layer for _ in range(num_decoder_layers)
+        ])
+
+        self.norm = nn.LayerNorm(d_model)
+
+        # Output projection for classification and box prediction
+        # Assuming num_classes is the number of activity classes
+        self.class_embed = nn.Linear(d_model, 10)  # 10 activity classes
+
+    def forward(self, memory):
+        """
+        Args:
+            memory: Output from encoder (B, 420, 270)
+        Returns:
+            outputs: Dictionary containing class predictions
+        """
+        B = memory.shape[0]
+
+        # Initialize decoder input with zero queries
+        tgt = torch.zeros_like(self.query_embed.unsqueeze(0).expand(B, -1, -1))
+
+        # Get positional queries
+        query_pos = self.query_embed.unsqueeze(0).expand(B, -1, -1)
+
+        # Run through decoder layers
+        output = tgt
+        for layer in self.decoder_layers:
+            output = layer(
+                tgt=output,
+                memory=memory,
+                query_pos=query_pos
+            )
+
+        output = self.norm(output)
+
+        # Get classifications
+        outputs_class = self.class_embed(output)
+
+        return outputs_class
+
+
+class TransformerDecoderLayer(nn.Module):
+    def __init__(self, d_model=270, nhead=8, dim_feedforward=2048, dropout=0.1):
+        super().__init__()
+
+        # Self attention
+        self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=True)
+        self.dropout1 = nn.Dropout(dropout)
+        self.norm1 = nn.LayerNorm(d_model)
+
+        # Cross attention
+        self.cross_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=True)
+        self.dropout2 = nn.Dropout(dropout)
+        self.norm2 = nn.LayerNorm(d_model)
+
+        # Feed forward
+        self.ffn = nn.Sequential(
+            nn.Linear(d_model, dim_feedforward),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(dim_feedforward, d_model)
+        )
+        self.dropout3 = nn.Dropout(dropout)
+        self.norm3 = nn.LayerNorm(d_model)
+
+    def with_pos_embed(self, tensor, pos=None):
+        return tensor if pos is None else tensor + pos
+
+    def forward(self, tgt, memory, query_pos=None):
+        # Self attention
+        q = k = self.with_pos_embed(tgt, query_pos)
+        tgt2 = self.self_attn(q, k, tgt)[0]
+        tgt = tgt + self.dropout1(tgt2)
+        tgt = self.norm1(tgt)
+
+        # Cross attention
+        tgt2 = self.cross_attn(
+            query=self.with_pos_embed(tgt, query_pos),
+            key=memory,
+            value=memory
+        )[0]
+        tgt = tgt + self.dropout2(tgt2)
+        tgt = self.norm2(tgt)
+
+        # Feed forward
+        tgt2 = self.ffn(tgt)
+        tgt = tgt + self.dropout3(tgt2)
+        tgt = self.norm3(tgt)
+
+        return tgt
+
+
+class DETR_MultiUser(nn.Module):
+    def __init__(self, var_x_shape, var_y_shape):
+        super().__init__()
+
+        # Encoder (your existing THAT_ENCODER)
+        self.encoder = THAT_ENCODER(var_x_shape, var_y_shape)
+
+        # Decoder
+        self.decoder = TransformerDecoder(
+            d_model=270,  # Matches encoder output feature dimension
+            nhead=6,
+            num_decoder_layers=6,
+            dim_feedforward=2048,
+            dropout=0.1
+        )
+
+    def forward(self, x):
+        # Get encoder features
+        memory = self.encoder(x)  # Shape: (B, 420, 270)
+
+        # Pass through decoder
+        outputs_class = self.decoder(memory)  # Shape: (B, 10, num_classes)
+
+        return outputs_class
 
 class PermutationMatchingLoss(nn.Module):
     def __init__(self):
@@ -355,7 +488,7 @@ def run_that_decoder(data_train_x,
                        var_repeat=10):
     """
     [description]
-    : run WiFi-based model THAT_DECODER_MULTIHEAD
+    : run WiFi-based model THAT_ENCODER
     [parameter]
     : data_train_x: numpy array, CSI amplitude to train model
     : data_train_y: numpy array, labels to train model
@@ -386,7 +519,7 @@ def run_that_decoder(data_train_x,
     ## ========================================= Train & Evaluate =========================================
     #
     ##
-    # wandb.init(project="wifi-based-model-THAT_DECODER_MULTIHEAD", config={
+    # wandb.init(project="wifi-based-model-THAT_ENCODER", config={
     #     "model": "THAT_multi_head",
     #     "repeat_experiments": var_repeat,
     # })
@@ -396,10 +529,10 @@ def run_that_decoder(data_train_x,
     result_time_test = []
     #
     ##
-    var_macs, var_params = get_model_complexity_info(THAT_DECODER_MULTIHEAD(var_x_shape, var_y_shape),
-                                                     var_x_shape, as_strings=False)
+    # var_macs, var_params = get_model_complexity_info(THAT_ENCODER(var_x_shape, var_y_shape),
+    #                                                  var_x_shape, as_strings=False)
     #
-    print("Parameters:", var_params, "- FLOPs:", var_macs * 2)
+    # print("Parameters:", var_params, "- FLOPs:", var_macs * 2)
     #
     ##
     for var_r in range(var_repeat):
@@ -407,7 +540,7 @@ def run_that_decoder(data_train_x,
         ##
         print("Repeat", var_r)
         run = wandb.init(
-            project="wifi-based-model-THAT_DECODER_MULTIHEAD",
+            project="wifi-based-model-THAT_ENCODER",
             name=f"Repeat_{var_r}",
             config={
                 "model": "THAT_MultiHead",
@@ -418,9 +551,9 @@ def run_that_decoder(data_train_x,
         #
         torch.random.manual_seed(var_r + 39)
         #
-        model_that = THAT_DECODER_MULTIHEAD(var_x_shape, var_y_shape).to(device)
+        model_detr = DETR_MultiUser(var_x_shape, var_y_shape).to(device)
         #
-        optimizer = torch.optim.Adam(model_that.parameters(),
+        optimizer = torch.optim.Adam(model_detr.parameters(),
                                      lr=preset["nn"]["lr"],
                                      weight_decay=0)
         #
@@ -434,7 +567,7 @@ def run_that_decoder(data_train_x,
         #
         ## ---------------------------------------- Train -----------------------------------------
         #
-        var_best_weight = train(model=model_that,
+        var_best_weight = train(model=model_detr,
                                 optimizer=optimizer,
                                 loss=loss,
                                 data_train_set=data_train_set,
@@ -449,10 +582,10 @@ def run_that_decoder(data_train_x,
         #
         ## ---------------------------------------- Test ------------------------------------------
         #
-        model_that.load_state_dict(var_best_weight)
+        model_detr.load_state_dict(var_best_weight)
         #
         with torch.no_grad():
-            predict_test_y = model_that(torch.from_numpy(data_test_x).to(device))
+            predict_test_y = model_detr(torch.from_numpy(data_test_x).to(device))
         #
         # predict_test_y = torch.clamp(torch.round(predict_test_y), min=0, max=5).float()
         predict_test_y = predict_test_y.detach().cpu().numpy()
