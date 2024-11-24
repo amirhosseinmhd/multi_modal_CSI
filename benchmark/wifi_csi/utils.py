@@ -7,8 +7,47 @@ import seaborn as sns
 from sklearn.metrics import confusion_matrix
 import numpy as np
 import torch
-import numpy as np
+
 import os
+
+
+def process_predictions(y_pred, y_true, var_threshold=0.5):
+    """
+    Process activity predictions to count activities above threshold.
+
+    Args:
+        y_pred: numpy array of shape (num_samples, 6, 9) containing probabilities
+        y_true: numpy array of shape (num_samples, 6, 9) containing true values
+        var_threshold: minimum probability threshold for counting an activity
+
+    Returns:
+        y_pred_processed: summed activity counts (num_samples, 9)
+        y_true_processed: summed true activity counts (num_samples, 9)
+        batch_size: number of samples in batch
+    """
+    # Get the indices of max probabilities for each user
+    max_indices = np.argmax(y_pred, axis=2)  # Shape: (num_samples, 6)
+
+    # Get the corresponding maximum probabilities
+    max_probs = np.take_along_axis(y_pred, np.expand_dims(max_indices, axis=2), axis=2)
+    max_probs = max_probs.squeeze(axis=2)  # Shape: (num_samples, 6)
+
+    # Create a mask for probabilities above threshold
+    above_threshold = max_probs > var_threshold  # Shape: (num_samples, 6)
+
+    # Create one-hot encoded matrix for the predicted activities
+    y_pred_one_hot = np.zeros_like(y_pred)  # Shape: (num_samples, 6, 9)
+    batch_indices = np.arange(y_pred.shape[0])[:, None]
+    user_indices = np.arange(y_pred.shape[1])[None, :]
+    y_pred_one_hot[batch_indices, user_indices, max_indices] = above_threshold
+
+    # Sum up the activities across users
+    y_pred_processed = y_pred_one_hot.sum(axis=1)  # Shape: (num_samples, 9)
+    y_true_processed = y_true.sum(axis=1)  # Shape: (num_samples, 9)
+
+    batch_size = y_true.shape[0]
+
+    return y_pred_processed, y_true_processed, batch_size
 
 
 
@@ -25,16 +64,19 @@ def calculate_matrix_absolute_error(y_true, y_pred, var_mode = "multi_head", var
         y_pred = np.eye(num_classes)[y_pred_indices] # this gives us one hot encoded version of it.
         y_pred = y_pred.sum(axis=1)  # summing along the columns, this should give us count of each activity
         y_true = y_true.sum(axis=1)
+        y_pred = y_pred[:, :-1]
+        y_true = y_true[:, :-1]
 
     elif var_mode == "count_classification":
         batch_size, num_classes = y_pred.shape
         y_pred = np.clip(np.round(y_pred), a_min=0, a_max=5)
     elif var_mode == "baseline":
-        y_pred = (1 / (1 + np.exp(-y_pred)) > var_threshold).astype(float)
+        y_pred = (1 / (1 + np.exp(-y_pred))).astype(float)
         y_true = y_true.reshape(y_true.shape[0], -1, 9)
         y_pred = y_pred.reshape(y_true.shape[0], y_true.shape[1], y_true.shape[2])
-        y_pred = y_pred.sum(axis=1) # summing along the columns, this should give us count of each activity
-        y_true = y_true.sum(axis=1)
+
+        # Process predictions with threshold
+        y_pred, y_true, batch_size = process_predictions(y_pred, y_true, var_threshold=0.5)
         batch_size = y_true.shape[0]
     else:
         raise ValueError(f"Unsupported var_mode: {var_mode}")
@@ -43,6 +85,7 @@ def calculate_matrix_absolute_error(y_true, y_pred, var_mode = "multi_head", var
     absolute_diff = np.abs(y_true - y_pred)
     acc_bysample = (1*absolute_diff == 0).sum(axis=1)/absolute_diff.shape[1]
     acc = acc_bysample.mean()
+    std = acc_bysample.std()
     # Calculate total error and error per sample
     perfect_predictions = np.sum(np.all(absolute_diff == 0, axis=1))
     perfect_prediction_percentage = (perfect_predictions / batch_size) * 100
