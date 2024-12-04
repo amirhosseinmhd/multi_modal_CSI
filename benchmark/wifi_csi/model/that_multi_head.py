@@ -1,6 +1,6 @@
 """
 [file]          that.py
-[description]   implement and evaluate WiFi-based model THAT_DECODER_MULTIHEAD
+[description]   implement and evaluate WiFi-based model THAT_ENCODER
                 https://github.com/windofshadow/THAT
 """
 #
@@ -171,7 +171,7 @@ class Encoder(torch.nn.Module):
 #
 ##
 ## ------------------------------------------------------------------------------------------ ##
-## ---------------------------------------- THAT_DECODER_MULTIHEAD -------------------------------------------- ##
+## ---------------------------------------- THAT_ENCODER -------------------------------------------- ##
 ## ------------------------------------------------------------------------------------------ ##
 #
 ##
@@ -349,7 +349,7 @@ def run_that_multihead(data_train_x,
              var_repeat = 10):
     """
     [description]
-    : run WiFi-based model THAT_DECODER_MULTIHEAD
+    : run WiFi-based model THAT_ENCODER
     [parameter]
     : data_train_x: numpy array, CSI amplitude to train model
     : data_train_y: numpy array, labels to train model
@@ -380,7 +380,7 @@ def run_that_multihead(data_train_x,
     ## ========================================= Train & Evaluate =========================================
     #
     ##
-    # wandb.init(project="wifi-based-model-THAT_DECODER_MULTIHEAD", config={
+    # wandb.init(project="wifi-based-model-THAT_ENCODER", config={
     #     "model": "THAT_multi_head",
     #     "repeat_experiments": var_repeat,
     # })
@@ -401,7 +401,7 @@ def run_that_multihead(data_train_x,
         ##
         print("Repeat", var_r)
         run = wandb.init(
-            project="wifi-based-model-THAT_DECODER_MULTIHEAD",
+            project="wifi-based-model-THAT_ENCODER",
             name=f"Repeat_{var_r}",
             config={
                 "model": "THAT_MultiHead",
