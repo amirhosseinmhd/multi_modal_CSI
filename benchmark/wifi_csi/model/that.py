@@ -372,7 +372,7 @@ def run_that(data_train_x,
         run = wandb.init(
             project="results",
             name=f"BCE_THAT_{var_r}",
-            config=preset["nn"],
+            config=preset,
             reinit=True  # Allow multiple wandb.init() calls in the same process
         )
 

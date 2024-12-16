@@ -399,7 +399,7 @@ def run_that_count_pred(data_train_x,
         run = wandb.init(
             project="results",
             name=f"THAT_COUNT_BASED_{var_r}",
-            config=preset["nn"],
+            config=preset,
             reinit=True  # Allow multiple wandb.init() calls in the same process
         )
         #
