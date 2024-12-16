@@ -16,8 +16,9 @@ from .SSL_model import run_ssl
 from .that import run_that
 from .dual_band import run_dual_band
 from .that_multi_head import run_that_multihead
-from .that_multi_head import run_that_multihead
 from .that_count_pred_withSoftMaxConstraint import run_that_count_pred_contrained
+from .that_encoder import run_that_decoder
+
 
 
 
@@ -35,5 +36,5 @@ __all__ = ["run_strf",
            "run_dual_band",
            "run_that_multihead",
            "run_that_count_pred",
-           "run_that_count_pred_contrained"
-           ]
+           "run_that_count_pred_contrained",
+           "run_that_decoder"]

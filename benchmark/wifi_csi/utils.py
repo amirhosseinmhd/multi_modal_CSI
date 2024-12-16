@@ -4,56 +4,201 @@ import time
 
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, f1_score
 import numpy as np
 import torch
+import json
 import numpy as np
+
 import os
 
 
 
+def error_per_number_person(y_pred, y_true):
+    """
+    Args:
+        y_pred: numpy array of shape (num_samples, 9) containing prediction for each activity
+        y_true: numpy array of shape (num_samples, 9) containing true values
 
-def calculate_matrix_absolute_error(y_true, y_pred, var_mode = "multi_head", var_threshold = 0.5):
+    Returns:
+        error count if we have one activity, error count if we have two persons, and so on
+    """
+    count_num_people = y_true.sum(axis=1) # finding number of people in each sample
+    error_count = np.abs(y_pred - y_true).sum(axis=1) # finding error count in each sample
+
+    error_per_person = []
+    for count_index in range(1, 6):
+        index = np.where(count_num_people == count_index) # gives us index of samples with count_index people
+        error_per_person.append(error_count[index].mean()) # finding mean error count for samples with count_index people
+
+    return error_per_person
+
+def count_error(y_pred, y_true):
+    """
+    Args:
+        y_pred: numpy array of shape (num_samples, 9) containing prediction for each activity
+        y_true: numpy array of shape (num_samples, 9) containing true values
+
+    Returns:
+        error for count number people in each sample, (num_samples, 1)
+    """
+    count_num_people_y = y_true.sum(axis=1) # finding number of people in each sample
+    count_num_people_y_pred = y_pred.sum(axis=1) # finding number of people in each sample
+    error_count = np.abs(count_num_people_y_pred - count_num_people_y) # finding error count in each sample
+    return error_count
+
+
+def threshold_round(x, threshold=0.3):
+    """
+    Custom rounding function that uses a threshold.
+    If decimal part > threshold, rounds up; otherwise rounds down.
+    """
+    # Get the decimal part
+    decimal_part = x - np.floor(x)
+    # Round up if decimal part > threshold, down otherwise
+    return np.ceil(x) if decimal_part > threshold else np.floor(x)
+
+def process_predictions(y_pred, y_true, var_threshold=0.5):
+    """
+    Process activity predictions to count activities above threshold.
+
+    Args:
+        y_pred: numpy array of shape (num_samples, 6, 9) containing probabilities
+        y_true: numpy array of shape (num_samples, 6, 9) containing true values
+        var_threshold: minimum probability threshold for counting an activity
+
+    Returns:
+        y_pred_processed: summed activity counts (num_samples, 9)
+        y_true_processed: summed true activity counts (num_samples, 9)
+        batch_size: number of samples in batch
+    """
+    # Get the indices of max probabilities for each user
+    max_indices = np.argmax(y_pred, axis=2)  # Shape: (num_samples, 6)
+
+    # Get the corresponding maximum probabilities
+    max_probs = np.take_along_axis(y_pred, np.expand_dims(max_indices, axis=2), axis=2)
+    max_probs = max_probs.squeeze(axis=2)  # Shape: (num_samples, 6)
+
+    # Create a mask for probabilities above threshold
+    above_threshold = max_probs > var_threshold  # Shape: (num_samples, 6)
+
+    # Create one-hot encoded matrix for the predicted activities
+    y_pred_one_hot = np.zeros_like(y_pred)  # Shape: (num_samples, 6, 9)
+    batch_indices = np.arange(y_pred.shape[0])[:, None]
+    user_indices = np.arange(y_pred.shape[1])[None, :]
+    y_pred_one_hot[batch_indices, user_indices, max_indices] = above_threshold
+
+    # Sum up the activities across users
+    y_pred_processed = y_pred_one_hot.sum(axis=1)  # Shape: (num_samples, 9)
+    y_true_processed = y_true.sum(axis=1)  # Shape: (num_samples, 9)
+
+    batch_size = y_true.shape[0]
+
+    return y_pred_processed, y_true_processed, batch_size
+
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
+
+
+def calculate_scores(y_true, y_pred):
+    # Calculate precision and recall across all samples
+    total_tp = 0
+    total_fp = 0
+    total_fn = 0
+        # For each sample in the batch
+    for true, pred in zip(y_true, y_pred):
+        # Get the total number of objects in true and predicted
+        true_objects = np.sum(true)  # Total objects in ground truth
+        pred_objects = np.sum(pred)  # Total objects predicted
+
+        # Calculate correct predictions (true positives)
+        # We take the minimum between true and predicted count for each class
+        # to avoid counting false positives as true positives
+        tp = np.sum(np.minimum(true, pred))
+
+        # Calculate false positives and false negatives
+        fp = np.sum(np.maximum(0, pred - true))  # Extra predictions
+        fn = np.sum(np.maximum(0, true - pred))  # Missed objects
+
+        total_tp += tp
+        total_fp += fp
+        total_fn += fn
+    # Calculate precision and recall
+    precision_ = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0
+    recall_ = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0
+
+    # Calculate F1 score
+    f1_score_ = 2 * (precision_ * recall_) / (precision_ + recall_) if (precision_ + recall_) > 0 else 0
+
+    return precision_, recall_, f1_score_
+
+def performance_metrics(y_true, y_pred, var_mode="multi_head", var_threshold=0.5):
     # Ensure inputs are numpy arrays
     y_true = np.array(y_true)
     y_pred = np.array(y_pred)
+
     if var_mode == "count_classification_withConstrain":
         batch_size, num_classes = y_pred.shape
     elif var_mode == "multi_head":
+        y_pred = y_pred[-1]
         batch_size, num_heads, num_classes = y_pred.shape
         y_pred_indices = np.argmax(y_pred, axis=-1)
-        y_pred = np.eye(num_classes)[y_pred_indices] # this gives us one hot encoded version of it.
-        y_pred = y_pred.sum(axis=1)  # summing along the columns, this should give us count of each activity
+        y_pred = np.eye(num_classes)[y_pred_indices]
+        y_pred = y_pred.sum(axis=1)
         y_true = y_true.sum(axis=1)
-
+        y_pred = y_pred[:, :-1]
+        y_true = y_true[:, :-1]
     elif var_mode == "count_classification":
         batch_size, num_classes = y_pred.shape
-        y_pred = np.clip(np.round(y_pred), a_min=0, a_max=5)
+        # Apply custom threshold rounding and clipping
+        threshold_round_vec = np.vectorize(threshold_round)
+        y_pred = np.clip(threshold_round_vec(y_pred, threshold=0.5), a_min=0, a_max=5)
     elif var_mode == "baseline":
-        y_pred = (1 / (1 + np.exp(-y_pred)) > var_threshold).astype(float)
+        y_pred = (1 / (1 + np.exp(-y_pred))).astype(float)
         y_true = y_true.reshape(y_true.shape[0], -1, 9)
         y_pred = y_pred.reshape(y_true.shape[0], y_true.shape[1], y_true.shape[2])
-        y_pred = y_pred.sum(axis=1) # summing along the columns, this should give us count of each activity
-        y_true = y_true.sum(axis=1)
+        y_pred, y_true, batch_size = process_predictions(y_pred, y_true, var_threshold=0.5)
         batch_size = y_true.shape[0]
     else:
         raise ValueError(f"Unsupported var_mode: {var_mode}")
 
     # Calculate the absolute difference
     absolute_diff = np.abs(y_true - y_pred)
-    acc_bysample = (1*absolute_diff == 0).sum(axis=1)/absolute_diff.shape[1]
+    acc_bysample = (1 * absolute_diff == 0).sum(axis=1) / absolute_diff.shape[1]
     acc = acc_bysample.mean()
-    # Calculate total error and error per sample
-    perfect_predictions = np.sum(np.all(absolute_diff == 0, axis=1))
+    std = acc_bysample.std()
+
+    # Find perfect predictions
+    perfect_prediction_mask = np.all(absolute_diff == 0, axis=1)
+    perfect_predictions = np.sum(perfect_prediction_mask)
     perfect_prediction_percentage = (perfect_predictions / batch_size) * 100
-    total_error = np.sum(absolute_diff)/batch_size
+    total_error = np.sum(absolute_diff) / batch_size
+    error_per_person = error_per_number_person(y_pred, y_true)
+    counting_error_perPerson = count_error(y_pred,  y_true)
+    mean_count_error = counting_error_perPerson.mean()
+
+    precision_, recall_, f1_score_ = calculate_scores(y_true, y_pred)
+
     return {
         'total_error': total_error,
         'perfect_prediction_percentage': perfect_prediction_percentage,
-        'accuracy': acc
+        'accuracy': acc,
+        'error_per_person': error_per_person,
+        'mean_count_error': mean_count_error,
+        'counting_error_perPerson': counting_error_perPerson,
+        'precision': precision_,
+        'recall': recall_,
+        'f1_score': f1_score_
     }
 
-def reduce_dataset(data):
+def reduce_dataset(data, num_object_queries=None):
     new_data = []
     zero = np.zeros((5, 1))
 
@@ -64,6 +209,9 @@ def reduce_dataset(data):
         new_sample = np.hstack((new_sample, zero))
         legend_non_zero = new_sample.sum(axis=1)
         new_sample[legend_non_zero == 0, :] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+        if num_object_queries:
+            new_matrix = np.repeat([[0, 0, 0, 0, 0, 0, 0, 0, 0, 1]], num_object_queries-5, axis=0)
+            new_sample = np.concatenate((new_sample, new_matrix))
         new_data.append(new_sample)
     return np.array(new_data)
 
@@ -77,15 +225,20 @@ def visualize_model_performance(y_pred, y_true, save_dir="./visualizations",var_
     if var_mode == "count_classification_withConstrain":
         pass
     elif var_mode == "multi_head":
+        y_pred = y_pred[-1]
         batch_size, num_heads, num_classes = y_pred.shape
+
         y_pred_indices = np.argmax(y_pred, axis=-1)
         y_pred = np.eye(num_classes)[y_pred_indices] # this gives us one hot encoded version of it.
         y_pred = y_pred.sum(axis=1)  # summing along the columns, this should give us count of each activity
         y_true = y_true.sum(axis=1)
+        y_pred = y_pred[:, :-1]
+        y_true = y_true[:, :-1]
 
     elif var_mode == "count_classification":
         batch_size, num_classes = y_pred.shape
-        y_pred = np.clip(np.round(y_pred), a_min=0, a_max=5)
+        threshold_round_vec = np.vectorize(threshold_round)
+        y_pred = np.clip(threshold_round_vec(y_pred, threshold=0.3), a_min=0, a_max=5)
     elif var_mode == "baseline":
         y_pred = (1 / (1 + np.exp(-y_pred)) > 0.5).astype(float)
         y_true = y_true.reshape(y_true.shape[0], -1, 9)

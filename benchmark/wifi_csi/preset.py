@@ -7,14 +7,14 @@
 preset = {
     #
     ## define model
-    "model": "THAT_DECODER_MULTIHEAD",                                    # "ST-RF", "MLP", "LSTM", "CNN-1D", "CNN-2D", "CLSTM", "ABLSTM", "THAT_DECODER_MULTIHEAD",
-                                                              # "THAT_COUNT", "THAT_MULTI_HEAD", THAT_COUNT_CONSTRAINED
+    "model": "THAT_ENCODER",                                    # "ST-RF", "MLP", "LSTM", "CNN-1D", "CNN-2D", "CLSTM", "ABLSTM", "THAT",
+                                                              # "THAT_COUNT", "THAT_ENCODER", THAT_COUNT_CONSTRAINED, THAT_MULTI_HEAD
     # "model": "MLP",
     ## define task
     "task": "activity",                                 # "identity", "activity", "location"
     #
     ## number of repeated experiments
-    "repeat": 1,
+    "repeat": 10,
     #
     ## path of data
     "path": {
@@ -25,13 +25,13 @@ preset = {
     #
     ## data selection for experiments
     "data": {
-        "num_users": ["1", "2", "3", "4", "5"] ,   # select number(s) of users, (e.g., ["0", "1"], ["2", "3", "4", "5"])
-        "wifi_band": ["2.4", "5"],                           # select WiFi band(s) (e.g., ["2.4"], ["5"], ["2.4", "5"])
-        "environment": ["empty_room"],                   # select environment(s) (e.g., ["classroom"], ["meeting_room"], ["empty_room"])
+        "num_users": ["0","1", "2", "3", "4", "5"] ,   # select number(s) of users, (e.g., ["0", "1"], ["2", "3", "4", "5"])
+        "wifi_band": ["5"],                           # select WiFi band(s) (e.g., ["2.4"], ["5"], ["2.4", "5"])
+        "environment": ["meeting_room"],                   # select environment(s) (e.g., ["classroom"], ["meeting_room"], ["empty_room"])
         "length": 3000,                                 # default length of CSI
     },
     "data_band2": {
-        "num_users": ["1", "2", "3", "4", "5"] ,  # select number(s) of users, (e.g., ["0", "1"], ["2", "3", "4", "5"])
+        "num_users": ["0","1", "2", "3", "4", "5"] ,  # select number(s) of users, (e.g., ["0", "1"], ["2", "3", "4", "5"])
         "wifi_band": ["5"],  # select WiFi band(s) (e.g., ["2.4"], ["5"], ["2.4", "5"])
         "environment": ["empty_room"],  # select environment(s) (e.g., ["classroom"], ["meeting_room"], ["empty_room"])
         "length": 3000,  # default length of CSI
@@ -41,9 +41,26 @@ preset = {
     ## hyperparameters of models
     "nn": {
         "lr": 1e-3,                                     # learning rate
-        "epoch": 1000,                                   # number of epochs
+        "epoch": 200,                                   # number of epochs
         "batch_size": 128,                              # batch size
         "threshold": 0.5,                               # threshold to binarize sigmoid outputs
+        "scheduler": {
+            "type": "cosine_warmup",  # type of scheduler
+            "num_warmup_epochs": 10,  # number of warmup epochs
+            "min_lr_ratio": 0.05  # minimum learning rate ratio
+        },
+        # Loss function parameters
+        "loss": {
+            "type": "HungarianMatchingLoss",  # type of loss function
+            "cost_class_weight": 1.0,  # weight for classification cost
+            "aux_loss_weight": 0.25,  # weight for auxiliary losses
+            "label_smoothing": 0.25,  # label smoothing factor
+            "class_imbalance_weight": 0.25
+        },
+        "cross_attention_temp": 1,
+        "weight_decay": 2e-4,
+        "num_obj_queries": 5
+
     },
     #
     ## encoding of activities and locations
