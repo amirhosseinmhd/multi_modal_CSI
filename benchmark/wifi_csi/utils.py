@@ -47,6 +47,17 @@ def count_error(y_pred, y_true):
     error_count = np.abs(count_num_people_y_pred - count_num_people_y) # finding error count in each sample
     return error_count
 
+
+def threshold_round(x, threshold=0.3):
+    """
+    Custom rounding function that uses a threshold.
+    If decimal part > threshold, rounds up; otherwise rounds down.
+    """
+    # Get the decimal part
+    decimal_part = x - np.floor(x)
+    # Round up if decimal part > threshold, down otherwise
+    return np.ceil(x) if decimal_part > threshold else np.floor(x)
+
 def process_predictions(y_pred, y_true, var_threshold=0.5):
     """
     Process activity predictions to count activities above threshold.
@@ -146,7 +157,9 @@ def performance_metrics(y_true, y_pred, var_mode="multi_head", var_threshold=0.5
         y_true = y_true[:, :-1]
     elif var_mode == "count_classification":
         batch_size, num_classes = y_pred.shape
-        y_pred = np.clip(np.round(y_pred), a_min=0, a_max=5)
+        # Apply custom threshold rounding and clipping
+        threshold_round_vec = np.vectorize(threshold_round)
+        y_pred = np.clip(threshold_round_vec(y_pred, threshold=0.5), a_min=0, a_max=5)
     elif var_mode == "baseline":
         y_pred = (1 / (1 + np.exp(-y_pred))).astype(float)
         y_true = y_true.reshape(y_true.shape[0], -1, 9)
@@ -224,7 +237,8 @@ def visualize_model_performance(y_pred, y_true, save_dir="./visualizations",var_
 
     elif var_mode == "count_classification":
         batch_size, num_classes = y_pred.shape
-        y_pred = np.clip(np.round(y_pred), a_min=0, a_max=5)
+        threshold_round_vec = np.vectorize(threshold_round)
+        y_pred = np.clip(threshold_round_vec(y_pred, threshold=0.3), a_min=0, a_max=5)
     elif var_mode == "baseline":
         y_pred = (1 / (1 + np.exp(-y_pred)) > 0.5).astype(float)
         y_true = y_true.reshape(y_true.shape[0], -1, 9)

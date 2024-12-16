@@ -433,7 +433,7 @@ class TransformerDecoderLayer(nn.Module):
 
     def forward(self, tgt, memory, query_pos=None):
         # Self attention
-        q = k = self.with_pos_embed(tgt, query_pos)
+        q = k = self.with_pos_embed(tgt, None)
         tgt2 = self.self_attn(q, k, tgt)[0]
         tgt = tgt + self.dropout1(tgt2)
         tgt = self.norm1(tgt)
@@ -467,7 +467,7 @@ class DETR_MultiUser(nn.Module):
             nhead=6,
             num_decoder_layers=6,
             dim_feedforward=2048,
-            dropout=0.3,
+            dropout=0.1,
             num_queries=num_queries,
             temp_cross_attention=temp_cross
         )
@@ -718,7 +718,7 @@ def run_that_decoder(data_train_x,
     #
     ##
     ## ========================================= Train & Evaluate =========================================
-    result_accuracy = []
+    result_ppp = []
     result_time_train = []
     result_time_test = []
     result_total_error = []
@@ -743,7 +743,7 @@ def run_that_decoder(data_train_x,
         run = wandb.init(
             project="results",
             name=f"DETR_THAT_{var_r}",
-            config=preset["nn"],
+            config=preset,
             reinit=True  # Allow multiple wandb.init() calls in the same process
         )
         #
@@ -822,7 +822,7 @@ def run_that_decoder(data_train_x,
         #
 
         #
-        result_accuracy.append(dict_true_acc['perfect_prediction_percentage'])
+        result_ppp.append(dict_true_acc['perfect_prediction_percentage'])
         result_time_train.append(var_time_1 - var_time_0)
         result_time_test.append(var_time_2 - var_time_1)
         result_total_error.append(dict_true_acc['total_error'])
@@ -831,7 +831,7 @@ def run_that_decoder(data_train_x,
         result_f1_score.append(dict_true_acc['f1_score'])
 
     wandb.log({
-        "avg_accuracy": sum(result_accuracy) / len(result_accuracy),
+        "avg_accuracy": sum(result_ppp) / len(result_ppp),
         "avg_train_time": sum(result_time_train) / len(result_time_train),
         "avg_test_time": sum(result_time_test) / len(result_time_test),
         "avg_total_error": sum(result_total_error) / len(result_total_error),
@@ -855,7 +855,7 @@ def run_that_decoder(data_train_x,
     return dict_true_acc
 
     # # result = {}
-    # result_accuracy = []
+    # result_ppp = []
     # result_time_train = []
     # result_time_test = []
     #
@@ -977,11 +977,11 @@ def run_that_decoder(data_train_x,
     #     #
     #
     #     #
-    #     result_accuracy.append(dict_true_acc['perfect_prediction_percentage'])
+    #     result_ppp.append(dict_true_acc['perfect_prediction_percentage'])
     #     result_time_train.append(var_time_1 - var_time_0)
     #     result_time_test.append(var_time_2 - var_time_1)
     # wandb.log({
-    #     "avg_accuracy": sum(result_accuracy) / len(result_accuracy),
+    #     "avg_accuracy": sum(result_ppp) / len(result_ppp),
     #     "avg_train_time": sum(result_time_train) / len(result_time_train),
     #     "avg_test_time": sum(result_time_test) / len(result_time_test),
     # })

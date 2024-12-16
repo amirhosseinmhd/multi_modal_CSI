@@ -47,7 +47,7 @@ def train(model: Module,
     data_test_loader = DataLoader(data_test_set, len(data_test_set))
 
     var_loss_test_best = float('inf')
-    var_best_percision = 0
+    var_best_f1_score = 0
     var_best_weight = None
     if var_mode == "multi_head":
         scheduler = get_cosine_schedule_with_warmup(
@@ -61,6 +61,8 @@ def train(model: Module,
         var_time_e0 = time.time()
         model.train()
         for data_batch in data_train_loader:
+            if var_epoch == 300:
+                print("stop")
             data_batch_x, data_batch_y = data_batch
             data_batch_x = data_batch_x.to(device)
             data_batch_y = data_batch_y.to(device)
@@ -133,8 +135,8 @@ def train(model: Module,
               "- Recall %.6f" % dict_error_test['recall'],
               "- F1 Score %.6f" % dict_error_test['f1_score'])
 
-        if dict_error_test['precision'] > var_best_percision:
-            var_best_percision = dict_error_test['precision']
+        if dict_error_test['f1_score'] > var_best_f1_score:
+            var_best_f1_score = dict_error_test['f1_score']
             var_best_weight = deepcopy(model.state_dict())
 
     # if var_loss_test.cpu() < var_loss_test_best:

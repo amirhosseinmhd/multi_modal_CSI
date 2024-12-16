@@ -47,7 +47,7 @@ def run():
     var_model = var_args.model
     var_repeat = var_args.repeat
     var_users = [u.strip() for u in var_args.users.split(',')]
-    preset["data"]["num_users"]  = var_users
+    # preset["data"]["num_users"]  = var_users
     #
     ## load annotation file as labels
     data_pd_y = load_data_y(preset["path"]["data_y"],
@@ -70,11 +70,11 @@ def run():
     elif var_model == "THAT_COUNT_CONSTRAINED":
         data_y_red = reduce_dataset(data_y)
         data_y = data_y_red.sum(axis=1)
-    ## a training set (80%) and a test set (20%)
+    ## a training set (80%) and a test set (30%)
     data_train_x, data_test_x, data_train_y, data_test_y = train_test_split(data_x, data_y,
                                                                             test_size = 0.2,
                                                                             shuffle = True,
-                                                                            random_state = 39)
+                                                                            random_state = 103)
     #
     ## select a WiFi-based model
     if var_model == "ST-RF": run_model = run_strf
