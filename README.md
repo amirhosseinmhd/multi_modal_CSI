@@ -152,7 +152,7 @@ Edit `benchmark/wifi_csi/preset.py` to set data directory and to tune the hyperp
 
 Use `benchmark/wifi_csi/run.py` to run experiments for WiFi-based models. `--model` defines the WiFi-based model for experiments. `--task` defines the human sensing task to evaluate. `--repeat` defines the number of repeated experiments. If these arguments are not provided, models will load the default settings in `benchmark/wifi_csi/preset.py`.
 
-- `--model`: "ST-RF", "MLP", "LSTM", "CNN-1D", "CNN-2D", "CLSTM", "ABLSTM", "THAT"
+- `--model`: "ST-RF", "MLP", "LSTM", "CNN-1D", "CNN-2D", "CLSTM", "ABLSTM", "THAT_ENCODER"
 - `--task`: "identity", "location", "activity"
 
 The following code repeats experiments 10 times to run the MLP model for WiFi-based human activity recognition.
