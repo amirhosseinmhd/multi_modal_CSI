@@ -57,6 +57,23 @@ def train(model: Module,
             min_lr_ratio=preset["nn"]["scheduler"]["min_lr_ratio"]
         )
 
+    def apply_augmentation(x_batch):
+        # Add Gaussian noise
+        noise = torch.randn_like(x_batch) * 0.1
+        x_batch = x_batch + noise
+
+        # Random scaling (between 0.9 and 1.1)
+        scale = torch.rand(x_batch.size(0), 1, device=x_batch.device) * 0.2 + 0.9
+        x_batch = x_batch * scale.unsqueeze(-1)
+
+        # You can add more augmentations here
+        # For example:
+        # - Random masking
+        # - Time warping
+        # - Frequency masking
+
+        return x_batch
+
     for var_epoch in range(var_epochs):
         var_time_e0 = time.time()
         model.train()
@@ -66,6 +83,10 @@ def train(model: Module,
             data_batch_x, data_batch_y = data_batch
             data_batch_x = data_batch_x.to(device)
             data_batch_y = data_batch_y.to(device)
+
+            if model.training:
+                data_batch_x = apply_augmentation(data_batch_x)
+
             if var_mode == "count_classification":
                 data_batch_y = data_batch_y.sum(axis=1)
             if var_mode == "baseline":
