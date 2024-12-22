@@ -64,7 +64,7 @@ def run():
     #
     if var_model == "THAT_MULTI_HEAD":
         data_y = reduce_dataset(data_y) # CHECKKKKKKKK HEREEEEEE
-    if var_model == "THAT_ENCODER":
+    if var_model == "THAT_ENCODER" or "DETR":
         data_y = reduce_dataset(data_y, preset["nn"]["num_obj_queries"]) # CHECKKKKKKKK HEREEEEEE
 
     elif var_model == "THAT_COUNT_CONSTRAINED":
@@ -102,6 +102,8 @@ def run():
     elif var_model == "THAT_COUNT_CONSTRAINED": run_model = run_that_count_pred_contrained
 
     elif var_model == "THAT_ENCODER": run_model = run_that_decoder
+
+    elif var_model == "DETR": run_model = run_that_detr
 
     else:
         raise Exception("Not valid name for model")

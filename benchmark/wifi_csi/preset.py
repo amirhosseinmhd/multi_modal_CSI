@@ -7,7 +7,7 @@
 preset = {
     #
     ## define model
-    "model": "THAT_ENCODER",                                    # "ST-RF", "MLP", "LSTM", "CNN-1D", "CNN-2D", "CLSTM", "ABLSTM", "THAT",
+    "model": "DETR",                                    # "ST-RF", "MLP", "LSTM", "CNN-1D", "CNN-2D", "CLSTM", "ABLSTM", "THAT",
                                                               # "THAT_COUNT", "THAT_ENCODER", THAT_COUNT_CONSTRAINED, THAT_MULTI_HEAD
     # "model": "MLP",
     ## define task
@@ -40,9 +40,9 @@ preset = {
     #
     ## hyperparameters of models
     "nn": {
-        "lr": 1e-3,                                     # learning rate
-        "epoch": 200,                                   # number of epochs
-        "batch_size": 128,                              # batch size
+        "lr": 8e-4,                                     # learning rate
+        "epoch": 100,                                   # number of epochs
+        "batch_size": 64,                              # batch size
         "threshold": 0.5,                               # threshold to binarize sigmoid outputs
         "scheduler": {
             "type": "cosine_warmup",  # type of scheduler
