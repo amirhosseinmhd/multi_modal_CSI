@@ -77,9 +77,13 @@ def train(model: Module,
     for var_epoch in range(var_epochs):
         var_time_e0 = time.time()
         model.train()
-        for data_batch in data_train_loader:
-            if var_epoch == 300:
-                print("stop")
+        total_batches = len(data_train_loader)
+
+        for batch_idx, data_batch in enumerate(data_train_loader):
+            # Skip the last batch
+            if batch_idx == total_batches - 1:
+                continue
+
             data_batch_x, data_batch_y = data_batch
             data_batch_x = data_batch_x.to(device)
             data_batch_y = data_batch_y.to(device)

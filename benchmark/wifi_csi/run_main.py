@@ -64,7 +64,7 @@ def run():
     #
     if var_model == "THAT_MULTI_HEAD":
         data_y = reduce_dataset(data_y) # CHECKKKKKKKK HEREEEEEE
-    if var_model == "THAT_ENCODER" or "DETR":
+    if var_model == "THAT_ENCODER" or var_model == "DETR":
         data_y = reduce_dataset(data_y, preset["nn"]["num_obj_queries"]) # CHECKKKKKKKK HEREEEEEE
 
     elif var_model == "THAT_COUNT_CONSTRAINED":

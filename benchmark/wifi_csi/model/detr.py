@@ -5,6 +5,7 @@
 """
 #
 ##
+import os
 import time
 import torch
 import numpy as np
@@ -299,7 +300,7 @@ class THAT_ENCODER(torch.nn.Module):
         ## ---------------------------------------- left ------------------------------------------
         #
         # Replace pooling with CNN feature extractor
-        self.feature_extractor = CNNFeatureExtractor(input_channels=var_dim_feature)
+        # self.feature_extractor = CNNFeatureExtractor(input_channels=var_dim_feature)
 
         # Gaussian encoding layers
         self.layer_left_gaussian = Gaussian_Position(var_dim_feature, 100)  # 100 tokens for left stream
@@ -359,9 +360,9 @@ class THAT_ENCODER(torch.nn.Module):
 
     #
     ##
-    def forward(self, var_input):
+    def forward(self, var_left, var_right):
         # Process through CNN feature extractor
-        var_left, var_right = self.feature_extractor(var_input)
+        # var_left, var_right = self.feature_extractor(var_input)
 
         # Apply Gaussian position encoding
         var_left = self.layer_left_gaussian(var_left)  # Output: (batch_size, 100, features)
@@ -532,7 +533,7 @@ class TransformerDecoderLayer(nn.Module):
 class DETR_MultiUser(nn.Module):
     def __init__(self, var_x_shape, var_y_shape, temp_cross=1, num_queries=5):
         super().__init__()
-
+        self.feature_extractor = CNNFeatureExtractor(input_channels=var_x_shape[-1])
         # Encoder (your existing THAT_ENCODER)
         self.encoder = THAT_ENCODER(var_x_shape, var_y_shape)
         # Decoder
@@ -547,8 +548,10 @@ class DETR_MultiUser(nn.Module):
         )
 
     def forward(self, x):
-        # Get encoder features
-        memory = self.encoder(x)  # Shape: (B, 420, 270)
+        # Extracting Features
+        var_left, var_right = self.feature_extractor(x)
+        # Getting the memory to query from!
+        memory = self.encoder(var_left, var_right)  # Shape: (B, 420, 270)
 
         # Pass through decoder to get predictions from all layers
         outputs_class = self.decoder(memory)  # Shape: [num_layers + 1, B, num_queries, num_classes]
@@ -556,40 +559,6 @@ class DETR_MultiUser(nn.Module):
         return outputs_class
 
 
-# class PermutationMatchingLoss(nn.Module):
-#     def __init__(self):
-#         super(PermutationMatchingLoss, self).__init__()
-#         self.ce_loss = nn.CrossEntropyLoss(reduction='none')
-#
-#     def forward(self, predictions, targets):
-#         batch_size, num_heads, num_classes = predictions.shape
-#         assert num_heads == 5, "Number of prediction heads must be 5"
-#         if targets.shape != (batch_size, num_heads, num_classes):
-#             print("target miss match")
-#             print(targets.shape)
-#         all_permutations = list(permutations(range(num_heads)))
-#         best_loss = torch.full((batch_size,), float('inf'), device=predictions.device)
-#         best_perm_indices = torch.zeros(batch_size, dtype=torch.long, device=predictions.device)
-#
-#         for batch_idx in range(batch_size):
-#             for perm_idx, perm in enumerate(all_permutations):
-#                 perm_predictions = predictions[batch_idx, perm, :]
-#                 perm_targets = targets[batch_idx]
-#                 loss = self.ce_loss(perm_predictions, perm_targets.argmax(dim=1))
-#                 loss = loss.mean()  # Average loss across heads for this permutation
-#                 if loss < best_loss[batch_idx]:
-#                     best_loss[batch_idx] = loss
-#                     best_perm_indices[batch_idx] = perm_idx
-#
-#         # Create a new tensor with the best permutations
-#         best_predictions = torch.zeros_like(predictions)
-#         for batch_idx in range(batch_size):
-#             best_perm = all_permutations[best_perm_indices[batch_idx]]
-#             best_predictions[batch_idx] = predictions[batch_idx, best_perm, :]
-#
-#         # Compute the final loss using the best permutations
-#         final_loss = self.ce_loss(best_predictions.view(-1, num_classes), targets.view(-1, num_classes).argmax(dim=1))
-#         return final_loss.mean()
 
 class HungarianMatchingLoss(nn.Module):
     def __init__(self, cost_class_weight, aux_loss_weight, label_smoothing, class_imbalance_weight):
@@ -687,64 +656,102 @@ class HungarianMatchingLoss(nn.Module):
             return self._get_layer_loss(outputs, targets, indices)
 
 
-#         Hungarian Matching Loss for multi-user activity recognition
-#         Args:
-#             cost_class: Relative weight of classification loss
-#         """
-#         super().__init__()
-#         self.cost_class = cost_class
-#         self.ce_loss = nn.CrossEntropyLoss(label_smoothing=0.1)
-#
-#     @torch.no_grad()
-#     def Hungarian_matching(self, outputs, targets):
-#         """
-#         Performs the matching between predictions and ground truth
-#
-#         Args:
-#             outputs: Tensor of shape (batch_size, num_queries, num_classes)
-#             targets: Tensor of shape (batch_size, num_queries, num_classes)
-#
-#         Returns:
-#             A list of size batch_size, containing tuples of (index_i, index_j) where:
-#                 - index_i is the indices of the selected predictions (in order)
-#                 - index_j is the indices of the corresponding selected targets (in order)
-#         """
-#         bs, num_queries = outputs.shape[:2]
-#
-#         # Compute classification cost matrix
-#         out_prob = outputs.softmax(-1)  # [batch_size, num_queries, num_classes]
-#         # Convert target one-hot to class indices
-#         tgt_ids = targets.argmax(-1)  # [batch_size, num_queries]
-#
-#         # Compute cost matrix for all pairs of predictions and targets
-#         cost_class = -out_prob[:, :, tgt_ids.view(-1)].view(bs, num_queries, -1)
-#
-#         # Final cost matrix
-#         C = self.cost_class * cost_class
-#
-#         sizes = [num_queries] * bs
-#         indices = [linear_sum_assignment(c[i].cpu()) for i, c in enumerate(C.split(sizes, -1))]
-#         return [(torch.as_tensor(i, dtype=torch.int64), torch.as_tensor(j, dtype=torch.int64)) for i, j in indices]
-#
-#     def forward(self, outputs, targets):
-#         """
-#         Args:
-#             outputs: Tensor of shape (batch_size, num_queries, num_classes)
-#             targets: Tensor of shape (batch_size, num_queries, num_classes)
-#         """
-#         indices = self.Hungarian_matching(outputs, targets)
-#
-#         # Compute the classification loss
-#         losses = []
-#         for batch_idx, (pred_idx, tgt_idx) in enumerate(indices):
-#             pred = outputs[batch_idx][pred_idx]
-#             tgt = targets[batch_idx][tgt_idx]
-#             loss = self.ce_loss(pred, tgt.argmax(-1))
-#             losses.append(loss.mean())
-#
-#         return torch.stack(losses).mean()
-#
-##
+def save_model_components(model, save_dir):
+    """
+    Save model components based on scenario
+    Args:
+        model: DETR_MultiUser model
+        save_dir: Directory to save model
+        scenario: One of ["full", "feature_extractor", "feature_encoder"]
+    """
+    os.makedirs(save_dir, exist_ok=True)
+    torch.save(model.state_dict(), f"{save_dir}/full_model.pth")
+
+
+def save_model(model, save_path):
+    """
+    Save full model state dict
+    Args:
+        model: DETR_MultiUser model
+        save_path: Path to save model including filename
+    """
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    torch.save(model.state_dict(), save_path)
+
+
+def load_model_components(model, load_path, scenario="full", device=None):
+    """
+    Selectively load model components based on scenario from full model state dict
+    Args:
+        model: DETR_MultiUser model
+        load_path: Path to load full model state dict
+        scenario: One of ["full", "feature_extractor", "feature_encoder"]
+        device: torch device
+    Returns:
+        model: Updated model
+        param_groups: List of parameter groups with their learning rates
+    """
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Load full state dict
+    state_dict = torch.load(load_path, map_location=device)
+
+    param_groups = []
+
+    if scenario == "full":
+        # Use full model as initialization
+        model.load_state_dict(state_dict)
+        param_groups.append({'params': model.parameters(), 'lr': preset["nn"]["lr"]})
+
+    elif scenario == "feature_extractor":
+        # Only load feature extractor, keep other components random
+        feature_extractor_dict = {k: v for k, v in state_dict.items()
+                                  if k.startswith('feature_extractor.')}
+        model.feature_extractor.load_state_dict(
+            {k.replace('feature_extractor.', ''): v
+             for k, v in feature_extractor_dict.items()}
+        )
+
+        # Different learning rates for different components
+        param_groups.extend([
+            {'params': model.feature_extractor.parameters(), 'lr': preset["nn"]["lr"] * 0.01},  # Very small lr
+            {'params': model.encoder.parameters(), 'lr': preset["nn"]["lr"]},
+            {'params': model.decoder.parameters(), 'lr': preset["nn"]["lr"]}
+        ])
+
+    elif scenario == "feature_encoder":
+        # Load feature extractor and encoder, keep decoder random
+        fe_encoder_dict = {k: v for k, v in state_dict.items()
+                           if k.startswith(('feature_extractor.', 'encoder.'))}
+
+        # Load feature extractor
+        feature_extractor_dict = {k.replace('feature_extractor.', ''): v
+                                  for k, v in fe_encoder_dict.items()
+                                  if k.startswith('feature_extractor.')}
+        model.feature_extractor.load_state_dict(feature_extractor_dict)
+
+        # Load encoder
+        encoder_dict = {k.replace('encoder.', ''): v
+                        for k, v in fe_encoder_dict.items()
+                        if k.startswith('encoder.')}
+        model.encoder.load_state_dict(encoder_dict)
+
+        # Freeze feature extractor, small lr for encoder, normal lr for decoder
+        for param in model.feature_extractor.parameters():
+            param.requires_grad = False
+
+        param_groups.extend([
+            {'params': model.encoder.parameters(), 'lr': preset["nn"]["lr"] * 0.1},
+            {'params': model.decoder.parameters(), 'lr': preset["nn"]["lr"]}
+        ])
+
+    else:
+        raise ValueError(f"Unknown scenario: {scenario}")
+
+    return model, param_groups
+
+
 def run_that_detr(data_train_x,
                      data_train_y,
                      data_test_x,
@@ -798,7 +805,7 @@ def run_that_detr(data_train_x,
     result_f1_score = []
 
     #
-    var_macs, var_params = get_model_complexity_info(THAT_ENCODER(var_x_shape, var_y_shape),
+    var_macs, var_params = get_model_complexity_info(DETR_MultiUser(var_x_shape, var_y_shape),
                                                      var_x_shape, as_strings=False)
 
     print("Parameters:", var_params, "- FLOPs:", var_macs * 2)
@@ -809,11 +816,17 @@ def run_that_detr(data_train_x,
         #
         ##
         var_mode = "multi_head"
+        name_run = "Empty"
+        if preset["pretrained_path"]:
 
+            name_run = f"DETR_{var_r}_" + "_".join(preset["data"]["environment"]) + "_" + preset["transfer_scenario"]
+        else:
+            pretrained_state = "NPT"
+            name_run = f"DETR_{var_r}_" + "_".join(preset["data"]["environment"]) + "_" + pretrained_state 
         print("Repeat", var_r)
         run = wandb.init(
-            project="experiment",
-            name=f"new_DETR_{var_r}",
+            project="results",
+            name= name_run,
             config=preset,
             reinit=True  # Allow multiple wandb.init() calls in the same process
         )
@@ -822,11 +835,20 @@ def run_that_detr(data_train_x,
         #
         model_detr = DETR_MultiUser(var_x_shape, var_y_shape, temp_cross=preset["nn"]["cross_attention_temp"],
                                     num_queries=preset["nn"]["num_obj_queries"]).to(device)
-        #
-        optimizer = torch.optim.Adam(model_detr.parameters(),
-                                     lr=preset["nn"]["lr"],
-                                     weight_decay=preset["nn"]["weight_decay"])
-        #
+
+        if preset.get("pretrained_path"):
+            model_detr, param_groups = load_model_components(
+                model_detr,
+                preset["pretrained_path"],
+                preset.get("transfer_scenario"),
+                device
+            )
+            optimizer = torch.optim.Adam(param_groups)
+        else:
+            optimizer = torch.optim.Adam(model_detr.parameters(),
+                                         lr=preset["nn"]["lr"],
+                                         weight_decay=preset["nn"]["weight_decay"])
+
         loss = HungarianMatchingLoss(
             cost_class_weight=preset["nn"]["loss"]["cost_class_weight"],
             aux_loss_weight=preset["nn"]["loss"]["aux_loss_weight"],
@@ -847,9 +869,16 @@ def run_that_detr(data_train_x,
                                 var_epochs=preset["nn"]["epoch"],
                                 device=device,
                                 var_mode=var_mode)
+        # Save model components based on scenario
+        if preset.get("save_model"):
+            save_model_components(
+                model_detr,
+                preset.get("saving_path") + f"model_{var_r}")
         #
         var_time_1 = time.time()
         #
+
+
         ## ---------------------------------------- Test ------------------------------------------
         #
         model_detr.load_state_dict(var_best_weight)
@@ -925,148 +954,3 @@ def run_that_detr(data_train_x,
     wandb.finish()
     return dict_true_acc
 
-    # # result = {}
-    # result_ppp = []
-    # result_time_train = []
-    # result_time_test = []
-    #
-    # #
-    # var_macs, var_params = get_model_complexity_info(THAT_ENCODER(var_x_shape, var_y_shape),
-    #                                                  var_x_shape, as_strings=False)
-    #
-    # print("Parameters:", var_params, "- FLOPs:", var_macs * 2)
-    #
-    # #
-    #
-    # for var_r in range(var_repeat):
-    #     #
-    #     ##
-    #     var_mode = "multi_head"
-    #     config = {
-    #         # Training Parameters
-    #         "training": {
-    #             "batch_size": preset["nn"]["batch_size"],
-    #             "epochs": preset["nn"]["epoch"],
-    #             "learning_rate": preset["nn"]["lr"],
-    #             "weight_decay": preset["nn"]["weight_decay"],
-    #             "threshold": preset["nn"]["threshold"]
-    #         },
-    #
-    #         # Scheduler Configuration
-    #         "scheduler": preset["nn"]["scheduler"],
-    #
-    #         # Loss Function Configuration
-    #         "loss": preset["nn"]["loss"],
-    #         "class_weight_imbalance": preset["nn"]["loss"]["class_imbalance_weight"],
-    #         # Experiment Settings
-    #         "experiment": {
-    #             "mode": var_mode,
-    #             "repeat": var_r,
-    #             "seed": var_r + 39
-    #         }
-    #     }
-    #     print("Repeat", var_r)
-    #     run = wandb.init(
-    #         project="comparison",
-    #         name=f"Repeat_{var_r}",
-    #         config=config,
-    #         reinit=True  # Allow multiple wandb.init() calls in the same process
-    #     )
-    #     #
-    #     torch.random.manual_seed(var_r + 39)
-    #     #
-    #     model_detr = DETR_MultiUser(var_x_shape, var_y_shape, temp_cross=preset["nn"]["cross_attention_temp"],
-    #                                 num_queries=preset["nn"]["num_obj_queries"]).to(device)
-    #     #
-    #     optimizer = torch.optim.Adam(model_detr.parameters(),
-    #                                  lr=preset["nn"]["lr"],
-    #                                  weight_decay=preset["nn"]["weight_decay"])
-    #     #
-    #     loss = HungarianMatchingLoss(
-    #         cost_class_weight=preset["nn"]["loss"]["cost_class_weight"],
-    #         aux_loss_weight=preset["nn"]["loss"]["aux_loss_weight"],
-    #         label_smoothing=preset["nn"]["loss"]["label_smoothing"],
-    #         class_imbalance_weight=preset["nn"]["loss"]["class_imbalance_weight"]
-    #     )
-    #     var_time_0 = time.time()
-    #     #
-    #     ## ---------------------------------------- Train -----------------------------------------
-    #     #
-    #     var_best_weight = train(model=model_detr,
-    #                             optimizer=optimizer,
-    #                             loss=loss,
-    #                             data_train_set=data_train_set,
-    #                             data_test_set=data_test_set,
-    #                             var_threshold=preset["nn"]["threshold"],
-    #                             var_batch_size=preset["nn"]["batch_size"],
-    #                             var_epochs=preset["nn"]["epoch"],
-    #                             device=device,
-    #                             var_mode=var_mode)
-    #     #
-    #     var_time_1 = time.time()
-    #     #
-    #     ## ---------------------------------------- Test ------------------------------------------
-    #     #
-    #     model_detr.load_state_dict(var_best_weight)
-    #     #
-    #     with torch.no_grad():
-    #         predict_test_y = model_detr(torch.from_numpy(data_test_x).to(device))
-    #     #
-    #     # predict_test_y = torch.clamp(torch.round(predict_test_y), min=0, max=5).float()
-    #     predict_test_y = predict_test_y.detach().cpu().numpy()
-    #     #
-    #     var_time_2 = time.time()
-    #     #
-    #     ## -------------------------------------- Evaluate ----------------------------------------
-    #     #
-    #     ##
-    #
-    #     # data_test_y_c = data_test_y.sum(axis=1)
-    #     dict_true_acc = performance_metrics(data_test_y, predict_test_y, var_mode=var_mode)
-    #     wandb.log({
-    #         "repeat": var_r,
-    #         "train_time": var_time_1 - var_time_0,
-    #         "test_time": var_time_2 - var_time_1,
-    #         "TOTAL_TESTSET_ERROR": dict_true_acc['total_error'],
-    #         "TOTAL_TESTSET_perfect_prediction_percentage": dict_true_acc['perfect_prediction_percentage'],
-    #         "TOTAL_ACCURACY": dict_true_acc['accuracy'],
-    #         "mean_count_error": dict_true_acc['mean_count_error'],
-    #         "error_per_person_1": dict_true_acc['error_per_person'][0],
-    #         "error_per_person_2": dict_true_acc['error_per_person'][1],
-    #         "error_per_person_3": dict_true_acc['error_per_person'][2],
-    #         "error_per_person_4": dict_true_acc['error_per_person'][3],
-    #         "error_per_person_5": dict_true_acc['error_per_person'][4],
-    #         "precision": dict_true_acc['precision'],
-    #         "recall": dict_true_acc['recall'],
-    #         "f1_score": dict_true_acc['f1_score']
-    #     })
-    #     print(" %.6fs" % (time.time() - var_time_1),
-    #           "- Total Error %.6f" % dict_true_acc['total_error'],
-    #           "-  perfect_prediction_percentage %.6f" % dict_true_acc['perfect_prediction_percentage'],
-    #           )
-    #     #
-    #     #
-    #
-    #     #
-    #     result_ppp.append(dict_true_acc['perfect_prediction_percentage'])
-    #     result_time_train.append(var_time_1 - var_time_0)
-    #     result_time_test.append(var_time_2 - var_time_1)
-    # wandb.log({
-    #     "avg_accuracy": sum(result_ppp) / len(result_ppp),
-    #     "avg_train_time": sum(result_time_train) / len(result_time_train),
-    #     "avg_test_time": sum(result_time_test) / len(result_time_test),
-    # })
-    # viz_stats = visualize_model_performance(
-    #     y_pred=predict_test_y,
-    #     y_true=data_test_y,
-    #     var_mode=var_mode,
-    #     save_dir=f'./visualizations/experiment_{var_r}_{var_mode}'
-    # )
-    # print("\nDetailed Performance Analysis:")
-    # print(f"Mean Error: {viz_stats['mean_error']:.4f} ± {viz_stats['error_std']:.4f}")
-    # print("\nClass-wise Mean Absolute Error:")
-    # for i, error in enumerate(viz_stats['class_wise_mae']):
-    #     print(f"Class {i}: {error:.4f}")
-    # print(f"\nPerfect Predictions: {viz_stats['perfect_predictions'] * 100:.2f}%")
-    # wandb.finish()
-    # return dict_true_acc

@@ -8,13 +8,13 @@ preset = {
     #
     ## define model
     "model": "DETR",                                    # "ST-RF", "MLP", "LSTM", "CNN-1D", "CNN-2D", "CLSTM", "ABLSTM", "THAT",
-                                                              # "THAT_COUNT", "THAT_ENCODER", THAT_COUNT_CONSTRAINED, THAT_MULTI_HEAD
+                                                              # "THAT_COUNT", "THAT_ENCODER", THAT_COUNT_CONSTRAINED, THAT_MULTI_HEAD DETR
     # "model": "MLP",
     ## define task
     "task": "activity",                                 # "identity", "activity", "location"
     #
     ## number of repeated experiments
-    "repeat": 10,
+    "repeat": 3,
     #
     ## path of data
     "path": {
@@ -41,8 +41,8 @@ preset = {
     ## hyperparameters of models
     "nn": {
         "lr": 8e-4,                                     # learning rate
-        "epoch": 100,                                   # number of epochs
-        "batch_size": 64,                              # batch size
+        "epoch": 300,                                   # number of epochs
+        "batch_size": 16,                              # batch size
         "threshold": 0.5,                               # threshold to binarize sigmoid outputs
         "scheduler": {
             "type": "cosine_warmup",  # type of scheduler
@@ -54,10 +54,10 @@ preset = {
             "type": "HungarianMatchingLoss",  # type of loss function
             "cost_class_weight": 1.0,  # weight for classification cost
             "aux_loss_weight": 0.25,  # weight for auxiliary losses
-            "label_smoothing": 0.25,  # label smoothing factor
+            "label_smoothing": 0.3,  # label smoothing factor
             "class_imbalance_weight": 0.25
         },
-        "cross_attention_temp": 1,
+        "cross_attention_temp": 2,
         "weight_decay": 2e-4,
         "num_obj_queries": 5
 
@@ -86,4 +86,9 @@ preset = {
             "e":    [0, 0, 0, 0, 1],
         },
     },
+    "pretrained_path": "/home/amirmhd/Documents/multi_modal_CSI/benchmark/wifi_csi/results/model_0/full_model.pth",  # Path to pretrained models
+    # "pretrained_path": None,
+    "transfer_scenario": "full",  # One of ["full", "feature_extractor", "feature_encoder"]
+    "save_model": False,  # Whether to save model components
+    "saving_path": "results/"
 }
