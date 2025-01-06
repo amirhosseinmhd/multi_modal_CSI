@@ -17,7 +17,7 @@ from load_data import load_data_x, load_data_y, encode_data_y
 from utils import *
 #
 ##
-def mater_splitter(preset, var_task, var_model, var_users):
+def master_splitter(preset, var_task, var_model, var_users):
     env_data_x_train = []
     env_data_x_test = []
     env_data_y_train = []
@@ -103,14 +103,9 @@ def run():
     #                                                                           # need only one repeat
 
     # Ensuring there is no data leakage while doing splits.
-    data_train_x, data_test_x, data_train_y, data_test_y = mater_splitter(preset, var_task, var_model, var_users)
+    data_train_x, data_test_x, data_train_y, data_test_y = master_splitter(preset, var_task, var_model, var_users)
     #
 
-    ## a training set (80%) and a test set (30%)
-    # data_train_x, data_test_x, data_train_y, data_test_y = train_test_split(data_x, data_y,
-    #                                                                         test_size = 0.2,
-    #                                                                         shuffle = True,
-    #                                                                         random_state = 103)
     # #
     ## select a WiFi-based model
     if var_model == "ST-RF": run_model = run_strf
