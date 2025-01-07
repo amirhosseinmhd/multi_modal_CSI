@@ -14,6 +14,19 @@ import os
 
 
 
+def save_model_components(preset, model):
+    """
+    Save model components based on scenario
+    Args:
+        model: DETR_MultiUser model
+        save_dir: Directory to save model
+        scenario: One of ["full", "feature_extractor", "feature_encoder"]
+    """
+    save_dir = preset.get("saving_path") + f"model_0"
+    os.makedirs(save_dir, exist_ok=True)
+    env = "_".join(preset["data"]["environment"])
+    torch.save(model.state_dict(), f"{save_dir}/PT_{env}.pth")
+    
 def error_per_number_person(y_pred, y_true):
     """
     Args:
