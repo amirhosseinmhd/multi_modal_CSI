@@ -670,16 +670,6 @@ def save_model_components(preset, model):
     torch.save(model.state_dict(), f"{save_dir}/PT_{env}.pth")
 
 
-def save_model(model, save_path):
-    """
-    Save full model state dict
-    Args:
-        model: DETR_MultiUser model
-        save_path: Path to save model including filename
-    """
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    torch.save(model.state_dict(), save_path)
-
 
 def load_model_components(model, load_path, scenario="full", device=None):
     """
