@@ -656,7 +656,7 @@ class HungarianMatchingLoss(nn.Module):
             return self._get_layer_loss(outputs, targets, indices)
 
 
-def save_model_components(model, save_dir):
+def save_model_components(preset, model):
     """
     Save model components based on scenario
     Args:
@@ -664,8 +664,10 @@ def save_model_components(model, save_dir):
         save_dir: Directory to save model
         scenario: One of ["full", "feature_extractor", "feature_encoder"]
     """
+    save_dir = preset.get("saving_path") + f"model_0"
     os.makedirs(save_dir, exist_ok=True)
-    torch.save(model.state_dict(), f"{save_dir}/full_model.pth")
+    env = "_".join(preset["data"]["environment"])
+    torch.save(model.state_dict(), f"{save_dir}/PT_{env}.pth")
 
 
 def save_model(model, save_path):
@@ -871,9 +873,7 @@ def run_that_detr(data_train_x,
                                 var_mode=var_mode)
         # Save model components based on scenario
         if preset.get("save_model"):
-            save_model_components(
-                model_detr,
-                preset.get("saving_path") + f"model_{var_r}")
+            save_model_components(preset, model_detr)
         #
         var_time_1 = time.time()
         #
