@@ -27,7 +27,6 @@ echo "Starting job at $(date)"
 echo "Working directory: $(pwd)"
 echo "Python version: $(python --version)"
 
-# Run your Python script
 python run_main.py
 
 echo "Job finished at $(date)"
