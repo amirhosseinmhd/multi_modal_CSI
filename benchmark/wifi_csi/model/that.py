@@ -369,13 +369,14 @@ def run_that(data_train_x,
         #
         ##
         print("Repeat", var_r)
+        name_run = f"BCE_THAT_{var_r}_" + "_".join(preset["data"]["environment"])
+
         run = wandb.init(
-            project="results",
-            name=f"BCE_THAT_{var_r}",
+            project="final_results",
+            name= name_run,
             config=preset,
             reinit=True  # Allow multiple wandb.init() calls in the same process
         )
-
         #
         torch.random.manual_seed(var_r + 39)
         #

@@ -396,9 +396,10 @@ def run_that_count_pred(data_train_x,
         #
         ##
         print("Repeat", var_r)
+        name_run = f"DEM_THAT_{var_r}_" + "_".join(preset["data"]["environment"])
         run = wandb.init(
-            project="results",
-            name=f"THAT_COUNT_BASED_{var_r}",
+            project="final_results",
+            name= name_run,
             config=preset,
             reinit=True  # Allow multiple wandb.init() calls in the same process
         )
