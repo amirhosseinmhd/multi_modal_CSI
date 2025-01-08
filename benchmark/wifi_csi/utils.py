@@ -121,36 +121,21 @@ class NumpyEncoder(json.JSONEncoder):
 
 
 def calculate_scores(y_true, y_pred):
-    # Calculate precision and recall across all samples
-    total_tp = 0
-    total_fp = 0
-    total_fn = 0
-        # For each sample in the batch
-    for true, pred in zip(y_true, y_pred):
-        # Get the total number of objects in true and predicted
-        true_objects = np.sum(true)  # Total objects in ground truth
-        pred_objects = np.sum(pred)  # Total objects predicted
 
-        # Calculate correct predictions (true positives)
-        # We take the minimum between true and predicted count for each class
-        # to avoid counting false positives as true positives
-        tp = np.sum(np.minimum(true, pred))
+    tp = np.minimum(y_true, y_pred)
+    tn = np.where(np.maximum(y_true, y_pred) == 0, 1, 0)
+    fp = np.maximum(0, y_pred - y_true) # Extra predictions
+    fn = np.maximum(0, y_true - y_pred)  # Missed objects
+    tp_per_activity = tp.sum(axis=0)
+    tn_per_activity = tn.sum(axis=0)
+    fp_per_activity = fp.sum(axis=0)
+    fn_per_activity = fn.sum(axis=0)
+    precision_ = np.where((tp_per_activity + fp_per_activity) > 0,  tp_per_activity / (tp_per_activity + fp_per_activity + 1e-6) , 0)
+    recall_ = np.where((tp_per_activity + fn_per_activity) > 0,  tp_per_activity / (tp_per_activity + fn_per_activity + 1e-6) , 0)
+    f1_score_ = np.where((precision_ + recall_) > 0,  2 * (precision_ * recall_) / (precision_ + recall_ + 1e-6)  , 0)
+    accuracy_ = (tp_per_activity + tn_per_activity )/ (tp_per_activity + fn_per_activity + tn_per_activity + fp_per_activity)
 
-        # Calculate false positives and false negatives
-        fp = np.sum(np.maximum(0, pred - true))  # Extra predictions
-        fn = np.sum(np.maximum(0, true - pred))  # Missed objects
-
-        total_tp += tp
-        total_fp += fp
-        total_fn += fn
-    # Calculate precision and recall
-    precision_ = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0
-    recall_ = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0
-
-    # Calculate F1 score
-    f1_score_ = 2 * (precision_ * recall_) / (precision_ + recall_) if (precision_ + recall_) > 0 else 0
-
-    return precision_, recall_, f1_score_
+    return precision_.mean(), recall_.mean(), f1_score_.mean(), accuracy_.mean()
 
 def performance_metrics(y_true, y_pred, var_mode="multi_head", var_threshold=0.5):
     # Ensure inputs are numpy arrays
@@ -184,9 +169,9 @@ def performance_metrics(y_true, y_pred, var_mode="multi_head", var_threshold=0.5
 
     # Calculate the absolute difference
     absolute_diff = np.abs(y_true - y_pred)
-    acc_bysample = (1 * absolute_diff == 0).sum(axis=1) / absolute_diff.shape[1]
-    acc = acc_bysample.mean()
-    std = acc_bysample.std()
+    # acc_bysample = (1 * absolute_diff == 0).sum(axis=1) / absolute_diff.shape[1]
+    # acc = acc_bysample.mean()
+    # std = acc_bysample.std()
 
     # Find perfect predictions
     perfect_prediction_mask = np.all(absolute_diff == 0, axis=1)
@@ -197,7 +182,7 @@ def performance_metrics(y_true, y_pred, var_mode="multi_head", var_threshold=0.5
     counting_error_perPerson = count_error(y_pred,  y_true)
     mean_count_error = counting_error_perPerson.mean()
 
-    precision_, recall_, f1_score_ = calculate_scores(y_true, y_pred)
+    precision_, recall_, f1_score_, acc = calculate_scores(y_true, y_pred)
 
     return {
         'total_error': total_error,
