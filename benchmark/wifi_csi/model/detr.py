@@ -366,25 +366,25 @@ class THAT_ENCODER(torch.nn.Module):
 
         # Apply Gaussian position encoding
         var_left = self.layer_left_gaussian(var_left)  # Output: (batch_size, 100, features)
-        var_right = self.layer_right_gaussian(var_right)  # Output: (batch_size, 50, features)
+        # var_right = self.layer_right_gaussian(var_right)  # Output: (batch_size, 50, features)
 
         # Process left stream through transformer encoders
         for layer in self.layer_left_encoder:
             var_left = layer(var_left)
         var_left = self.layer_left_norm(var_left)
 
-        # Process right stream through transformer encoders
-        for layer in self.layer_right_encoder:
-            var_right = layer(var_right)
-        var_right = self.layer_right_norm(var_right)
+        # # Process right stream through transformer encoders
+        # for layer in self.layer_right_encoder:
+        #     var_right = layer(var_right)
+        # var_right = self.layer_right_norm(var_right)
 
         # Concatenate the streams
-        var_t = torch.concat([var_left, var_right], dim=1)  # Output: (batch_size, 150, features)
+        # var_t = torch.concat([var_left, var_right], dim=1)  # Output: (batch_size, 150, features)
 
-        return var_t
+        return var_left
 
 class TransformerDecoder(nn.Module):
-    def __init__(self, d_model=270, nhead=5, num_decoder_layers=6, num_queries=5, dim_feedforward=2048, dropout=0.1,
+    def __init__(self, d_model=270, nhead=5, num_decoder_layers=9, num_queries=5, dim_feedforward=2048, dropout=0.1,
                  temp_cross_attention=1):
         super().__init__()
         self.d_model = d_model
@@ -531,7 +531,7 @@ class TransformerDecoderLayer(nn.Module):
 
 
 class DETR_MultiUser(nn.Module):
-    def __init__(self, var_x_shape, var_y_shape, temp_cross=1, num_queries=5):
+    def __init__(self, var_x_shape, var_y_shape, num_decoder_layers=12, temp_cross=1, num_queries=5):
         super().__init__()
         self.feature_extractor = CNNFeatureExtractor(input_channels=var_x_shape[-1])
         # Encoder (your existing THAT_ENCODER)
@@ -540,7 +540,7 @@ class DETR_MultiUser(nn.Module):
         self.decoder = TransformerDecoder(
             d_model=270,  # Matches encoder output feature dimension
             nhead=6,
-            num_decoder_layers=6,
+            num_decoder_layers=num_decoder_layers,
             dim_feedforward=2048,
             dropout=0.1,
             num_queries=num_queries,
@@ -783,7 +783,7 @@ def run_that_detr(data_train_x,
     result_f1_score = []
 
     #
-    var_macs, var_params = get_model_complexity_info(DETR_MultiUser(var_x_shape, var_y_shape),
+    var_macs, var_params = get_model_complexity_info(DETR_MultiUser(var_x_shape, var_y_shape, ),
                                                      var_x_shape, as_strings=False)
 
     print("Parameters:", var_params, "- FLOPs:", var_macs * 2)
@@ -803,7 +803,7 @@ def run_that_detr(data_train_x,
             name_run = f"DETR_{var_r}_" + "_".join(preset["data"]["environment"]) + "_" + pretrained_state 
         print("Repeat", var_r)
         run = wandb.init(
-            project="final_results",
+            project="experiments_final",
             name= name_run,
             config=preset,
             reinit=True  # Allow multiple wandb.init() calls in the same process
@@ -811,7 +811,7 @@ def run_that_detr(data_train_x,
         #
         torch.random.manual_seed(var_r + 39)
         #
-        model_detr = DETR_MultiUser(var_x_shape, var_y_shape, temp_cross=preset["nn"]["cross_attention_temp"],
+        model_detr = DETR_MultiUser(var_x_shape, var_y_shape, num_decoder_layers=preset["nn"]["num_decoder_layers"] ,temp_cross=preset["nn"]["cross_attention_temp"],
                                     num_queries=preset["nn"]["num_obj_queries"]).to(device)
 
         if preset.get("pretrained_path"):

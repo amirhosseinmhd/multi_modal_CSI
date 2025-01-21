@@ -15,7 +15,6 @@ preset = {
     #
     ## number of repeated experiments
     "repeat": 3,
-    #
     ## path of data
     "path": {
         "data_x": "/local/data0/amir/PUBLIC_DATASET/wimans_dataset/wifi_csi/amp",               # directory of CSI amplitude files
@@ -27,7 +26,7 @@ preset = {
     "data": {
         "num_users": ["0","1", "2", "3", "4", "5"] ,   # select number(s) of users, (e.g., ["0", "1"], ["2", "3", "4", "5"])
         "wifi_band": ["5"],                           # select WiFi band(s) (e.g., ["2.4"], ["5"], ["2.4", "5"])
-        "environment": ["meeting_room"],                   # select environment(s) (e.g., ["classroom"], ["meeting_room"], ["empty_room"])
+        "environment": ["empty_room"],                   # select environment(s) (e.g., ["classroom"], ["meeting_room"], ["empty_room"])
         "length": 3000,                                 # default length of CSI
     },
     "data_band2": {
@@ -59,7 +58,8 @@ preset = {
         },
         "cross_attention_temp": 2,
         "weight_decay": 2e-4,
-        "num_obj_queries": 5
+        "num_obj_queries": 5,
+        "num_decoder_layers": 12
 
     },
     #
