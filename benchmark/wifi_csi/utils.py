@@ -13,6 +13,78 @@ import numpy as np
 import os
 
 
+def load_model_components(model, load_path, lr,  scenario="full", device=None):
+    """
+    Selectively load model components based on scenario from full model state dict
+    Args:
+        model: DETR_MultiUser model
+        load_path: Path to load full model state dict
+        scenario: One of ["full", "feature_extractor", "feature_encoder"]
+        device: torch device
+    Returns:
+        model: Updated model
+        param_groups: List of parameter groups with their learning rates
+    """
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Load full state dict
+    state_dict = torch.load(load_path, map_location=device)
+
+    param_groups = []
+
+    if scenario == "full":
+        # Use full model as initialization
+        model.load_state_dict(state_dict)
+        param_groups.append({'params': model.parameters(), 'lr': lr})
+
+    elif scenario == "feature_extractor":
+        # Only load feature extractor, keep other components random
+        feature_extractor_dict = {k: v for k, v in state_dict.items()
+                                  if k.startswith('feature_extractor.')}
+        model.feature_extractor.load_state_dict(
+            {k.replace('feature_extractor.', ''): v
+             for k, v in feature_extractor_dict.items()}
+        )
+
+        # Different learning rates for different components
+        param_groups.extend([
+            {'params': model.feature_extractor.parameters(), 'lr': lr * 0.01},  # Very small lr
+            {'params': model.encoder.parameters(), 'lr': lr},
+            {'params': model.decoder.parameters(), 'lr': lr}
+        ])
+
+    elif scenario == "feature_encoder":
+        # Load feature extractor and encoder, keep decoder random
+        fe_encoder_dict = {k: v for k, v in state_dict.items()
+                           if k.startswith(('feature_extractor.', 'encoder.'))}
+
+        # Load feature extractor
+        feature_extractor_dict = {k.replace('feature_extractor.', ''): v
+                                  for k, v in fe_encoder_dict.items()
+                                  if k.startswith('feature_extractor.')}
+        model.feature_extractor.load_state_dict(feature_extractor_dict)
+
+        # Load encoder
+        encoder_dict = {k.replace('encoder.', ''): v
+                        for k, v in fe_encoder_dict.items()
+                        if k.startswith('encoder.')}
+        model.encoder.load_state_dict(encoder_dict)
+
+        # Freeze feature extractor, small lr for encoder, normal lr for decoder
+        for param in model.feature_extractor.parameters():
+            param.requires_grad = False
+
+        param_groups.extend([
+            {'params': model.encoder.parameters(), 'lr': lr * 0.1},
+            {'params': model.decoder.parameters(), 'lr': lr}
+        ])
+
+    else:
+        raise ValueError(f"Unknown scenario: {scenario}")
+
+    return model, param_groups
+
 
 def save_model_components(preset, model):
     """
@@ -25,7 +97,8 @@ def save_model_components(preset, model):
     save_dir = preset.get("saving_path") + f"model_0"
     os.makedirs(save_dir, exist_ok=True)
     env = "_".join(preset["data"]["environment"])
-    torch.save(model.state_dict(), f"{save_dir}/PT_{env}.pth")
+    model_ = preset["model"]
+    torch.save(model.state_dict(), f"{save_dir}/PT_{env}_{model_}.pth")
     
 def error_per_number_person(y_pred, y_true):
     """

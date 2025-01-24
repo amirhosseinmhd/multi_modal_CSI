@@ -42,13 +42,18 @@ def train(model: Module,
           var_batch_size: int,
           var_epochs: int,
           device: device,
-          var_mode: str):
+          var_mode: str,
+          patience: int = 150):  # Added patience parameter
+
     data_train_loader = DataLoader(data_train_set, var_batch_size, shuffle=True, pin_memory=True)
     data_test_loader = DataLoader(data_test_set, len(data_test_set))
 
-    var_loss_test_best = float('inf')
+    # Initialize early stopping variables
     var_best_f1_score = 0
+    var_best_PPP = 0
     var_best_weight = None
+    counter = 0  # Counter for patience
+
     if var_mode == "multi_head":
         scheduler = get_cosine_schedule_with_warmup(
             optimizer,
@@ -58,19 +63,12 @@ def train(model: Module,
         )
 
     def apply_augmentation(x_batch):
-        # Add Gaussian noise
         noise = torch.randn_like(x_batch) * 0.1
         x_batch = x_batch + noise
-
-        # Random scaling (between 0.9 and 1.1)
         scale = torch.rand(x_batch.size(0), 1, device=x_batch.device) * 0.2 + 0.9
         x_batch = x_batch * scale.unsqueeze(-1)
-
-        # You can add more augmentations here
-        # For example:
-        # - Random masking
-        # - Time warping
-        # - Frequency masking
+        mask = torch.bernoulli(torch.ones_like(x_batch) * 0.96)
+        x_batch = x_batch * mask
 
         return x_batch
 
@@ -80,7 +78,6 @@ def train(model: Module,
         total_batches = len(data_train_loader)
 
         for batch_idx, data_batch in enumerate(data_train_loader):
-            # Skip the last batch
             if batch_idx == total_batches - 1:
                 continue
 
@@ -108,8 +105,8 @@ def train(model: Module,
         data_batch_y = data_batch_y.detach().cpu().numpy()
         predict_train_y = predict_train_y.detach().cpu().numpy()
 
-        dict_error_train = performance_metrics(data_batch_y.astype(int), predict_train_y.astype(int), var_mode=var_mode,
-                                               var_threshold=var_threshold)
+        dict_error_train = performance_metrics(data_batch_y.astype(int), predict_train_y.astype(int),
+                                               var_mode=var_mode, var_threshold=var_threshold)
 
         model.eval()
         with torch.no_grad():
@@ -129,7 +126,7 @@ def train(model: Module,
 
             dict_error_test = performance_metrics(data_test_y, predict_test_y, var_mode, var_threshold)
 
-        # Log standard metrics
+        # Log metrics
         wandb.log({
             "epoch": var_epoch,
             "train_loss": var_loss_train.item(),
@@ -146,7 +143,6 @@ def train(model: Module,
             "f1_score": dict_error_test['f1_score']
         })
 
-
         print(f"Epoch {var_epoch}/{var_epochs}",
               "- %.6fs" % (time.time() - var_time_e0),
               "- Loss %.6f" % var_loss_train.cpu(),
@@ -160,12 +156,22 @@ def train(model: Module,
               "- Recall %.6f" % dict_error_test['recall'],
               "- F1 Score %.6f" % dict_error_test['f1_score'])
 
-        if dict_error_test['f1_score'] > var_best_f1_score:
+        if (dict_error_test['f1_score'] > var_best_f1_score and
+                dict_error_test['perfect_prediction_percentage'] > var_best_PPP):
+            var_best_PPP = dict_error_test['perfect_prediction_percentage']
+
             var_best_f1_score = dict_error_test['f1_score']
             var_best_weight = deepcopy(model.state_dict())
+            var_epoch_saved = var_epoch
+            counter = 0  # Reset counter
+        else:
+            counter += 1  # Increment counter
 
-    # if var_loss_test.cpu() < var_loss_test_best:
-        #     var_loss_test_best = var_loss_test.cpu()
-        #     var_best_weight = deepcopy(model.state_dict())
 
+        # Early stopping check
+        if counter >= patience:
+            print(f"Early stopping triggered at epoch {var_epoch}")
+            break
+    print(f"Epoch that the model was saved {var_epoch_saved}")
     return var_best_weight
+

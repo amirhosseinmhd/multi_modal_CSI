@@ -39,8 +39,8 @@ preset = {
     #
     ## hyperparameters of models
     "nn": {
-        "lr": 8e-4,                                     # learning rate
-        "epoch": 300,                                   # number of epochs
+        "lr": 5e-4,                                     # learning rate
+        "epoch": 250,                                   # number of epochs
         "batch_size": 16,                              # batch size
         "threshold": 0.5,                               # threshold to binarize sigmoid outputs
         "scheduler": {
@@ -59,7 +59,7 @@ preset = {
         "cross_attention_temp": 2,
         "weight_decay": 2e-4,
         "num_obj_queries": 5,
-        "num_decoder_layers": 12
+        "num_decoder_layers": 6
 
     },
     #
@@ -86,7 +86,7 @@ preset = {
             "e":    [0, 0, 0, 0, 1],
         },
     },
-    "pretrained_path": "/home/amirmhd/Documents/multi_modal_CSI/benchmark/wifi_csi/results/model_0/full_model.pth",  # Path to pretrained models
+    "pretrained_path": "/home/amirmhd/Documents/multi_modal_CSI/benchmark/wifi_csi/results/model_0/PT_classroom_meeting_room_DETR.pth",  # Path to pretrained models
     # "pretrained_path": None,
     "transfer_scenario": "full",  # One of ["full", "feature_extractor", "feature_encoder"]
     "save_model": False,  # Whether to save model components

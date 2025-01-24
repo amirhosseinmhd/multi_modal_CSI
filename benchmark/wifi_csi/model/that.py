@@ -382,9 +382,20 @@ def run_that(data_train_x,
         #
         model_that = THAT(var_x_shape, var_y_shape).to(device)
         #
-        optimizer = torch.optim.Adam(model_that.parameters(),
-                                     lr = preset["nn"]["lr"],
-                                     weight_decay = 0)
+        if preset.get("pretrained_path"):
+            model_that, param_groups = load_model_components(
+                model_that,
+                preset["pretrained_path"],
+                preset["nn"]["lr"],
+                preset.get("transfer_scenario"),
+                device
+            )
+            optimizer = torch.optim.Adam(param_groups)
+        else:
+            optimizer = torch.optim.Adam(model_that.parameters(),
+                                         lr=preset["nn"]["lr"],
+                                         weight_decay=preset["nn"]["weight_decay"])
+
         #
         loss_mode = "baseline"
         loss = torch.nn.BCEWithLogitsLoss(pos_weight = torch.tensor([4] * var_y_shape[-1]).to(device))
@@ -406,6 +417,10 @@ def run_that(data_train_x,
                                 var_mode = loss_mode)
         #
         var_time_1 = time.time()
+
+        if preset.get("save_model"):
+            save_model_components(preset, model_that)
+
         #
         ## ---------------------------------------- Test ------------------------------------------
         #

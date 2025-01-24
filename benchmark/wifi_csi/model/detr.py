@@ -304,7 +304,7 @@ class THAT_ENCODER(torch.nn.Module):
 
         # Gaussian encoding layers
         self.layer_left_gaussian = Gaussian_Position(var_dim_feature, 100)  # 100 tokens for left stream
-        self.layer_right_gaussian = Gaussian_Position(var_dim_feature, 50)  # 50 tokens for right stream
+        # self.layer_right_gaussian = Gaussian_Position(var_dim_feature, 50)  # 50 tokens for right stream
 
         # Left stream encoder
 
@@ -384,7 +384,7 @@ class THAT_ENCODER(torch.nn.Module):
         return var_left
 
 class TransformerDecoder(nn.Module):
-    def __init__(self, d_model=270, nhead=5, num_decoder_layers=9, num_queries=5, dim_feedforward=2048, dropout=0.1,
+    def __init__(self, d_model=270, nhead=5, num_decoder_layers=9, num_queries=5, dim_feedforward=512, dropout=0.1,
                  temp_cross_attention=1):
         super().__init__()
         self.d_model = d_model
@@ -657,78 +657,6 @@ class HungarianMatchingLoss(nn.Module):
 
 
 
-def load_model_components(model, load_path, scenario="full", device=None):
-    """
-    Selectively load model components based on scenario from full model state dict
-    Args:
-        model: DETR_MultiUser model
-        load_path: Path to load full model state dict
-        scenario: One of ["full", "feature_extractor", "feature_encoder"]
-        device: torch device
-    Returns:
-        model: Updated model
-        param_groups: List of parameter groups with their learning rates
-    """
-    if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # Load full state dict
-    state_dict = torch.load(load_path, map_location=device)
-
-    param_groups = []
-
-    if scenario == "full":
-        # Use full model as initialization
-        model.load_state_dict(state_dict)
-        param_groups.append({'params': model.parameters(), 'lr': preset["nn"]["lr"]})
-
-    elif scenario == "feature_extractor":
-        # Only load feature extractor, keep other components random
-        feature_extractor_dict = {k: v for k, v in state_dict.items()
-                                  if k.startswith('feature_extractor.')}
-        model.feature_extractor.load_state_dict(
-            {k.replace('feature_extractor.', ''): v
-             for k, v in feature_extractor_dict.items()}
-        )
-
-        # Different learning rates for different components
-        param_groups.extend([
-            {'params': model.feature_extractor.parameters(), 'lr': preset["nn"]["lr"] * 0.01},  # Very small lr
-            {'params': model.encoder.parameters(), 'lr': preset["nn"]["lr"]},
-            {'params': model.decoder.parameters(), 'lr': preset["nn"]["lr"]}
-        ])
-
-    elif scenario == "feature_encoder":
-        # Load feature extractor and encoder, keep decoder random
-        fe_encoder_dict = {k: v for k, v in state_dict.items()
-                           if k.startswith(('feature_extractor.', 'encoder.'))}
-
-        # Load feature extractor
-        feature_extractor_dict = {k.replace('feature_extractor.', ''): v
-                                  for k, v in fe_encoder_dict.items()
-                                  if k.startswith('feature_extractor.')}
-        model.feature_extractor.load_state_dict(feature_extractor_dict)
-
-        # Load encoder
-        encoder_dict = {k.replace('encoder.', ''): v
-                        for k, v in fe_encoder_dict.items()
-                        if k.startswith('encoder.')}
-        model.encoder.load_state_dict(encoder_dict)
-
-        # Freeze feature extractor, small lr for encoder, normal lr for decoder
-        for param in model.feature_extractor.parameters():
-            param.requires_grad = False
-
-        param_groups.extend([
-            {'params': model.encoder.parameters(), 'lr': preset["nn"]["lr"] * 0.1},
-            {'params': model.decoder.parameters(), 'lr': preset["nn"]["lr"]}
-        ])
-
-    else:
-        raise ValueError(f"Unknown scenario: {scenario}")
-
-    return model, param_groups
-
 
 def run_that_detr(data_train_x,
                      data_train_y,
@@ -783,7 +711,7 @@ def run_that_detr(data_train_x,
     result_f1_score = []
 
     #
-    var_macs, var_params = get_model_complexity_info(DETR_MultiUser(var_x_shape, var_y_shape, ),
+    var_macs, var_params = get_model_complexity_info(DETR_MultiUser(var_x_shape, var_y_shape),
                                                      var_x_shape, as_strings=False)
 
     print("Parameters:", var_params, "- FLOPs:", var_macs * 2)
@@ -796,14 +724,13 @@ def run_that_detr(data_train_x,
         var_mode = "multi_head"
         name_run = "Empty"
         if preset["pretrained_path"]:
-
             name_run = f"DETR_{var_r}_" + "_".join(preset["data"]["environment"]) + "_" + preset["transfer_scenario"]
         else:
             pretrained_state = "NPT"
             name_run = f"DETR_{var_r}_" + "_".join(preset["data"]["environment"]) + "_" + pretrained_state 
         print("Repeat", var_r)
         run = wandb.init(
-            project="experiments_final",
+            project="final_results",
             name= name_run,
             config=preset,
             reinit=True  # Allow multiple wandb.init() calls in the same process
@@ -818,6 +745,7 @@ def run_that_detr(data_train_x,
             model_detr, param_groups = load_model_components(
                 model_detr,
                 preset["pretrained_path"],
+                preset["nn"]["lr"],
                 preset.get("transfer_scenario"),
                 device
             )
