@@ -212,31 +212,31 @@ class CNNFeatureExtractor(nn.Module):
         )
 
         # Right stream - target 50 tokens
-        self.right_extractor = nn.Sequential(
-            # Initial noise reduction
-            nn.Conv1d(input_channels, input_channels, kernel_size=7, padding=3, groups=input_channels),
-            nn.BatchNorm1d(input_channels),
-            nn.LeakyReLU(),
+        # self.right_extractor = nn.Sequential(
+        #     # Initial noise reduction
+        #     nn.Conv1d(input_channels, input_channels, kernel_size=7, padding=3, groups=input_channels),
+        #     nn.BatchNorm1d(input_channels),
+        #     nn.LeakyReLU(),
 
-            # Deeper denoising block
-            nn.Conv1d(input_channels, input_channels * 2, kernel_size=5, padding=2),
-            nn.BatchNorm1d(input_channels * 2),
-            nn.LeakyReLU(),
-            nn.Conv1d(input_channels * 2, input_channels, kernel_size=5, padding=2, groups=input_channels),
-            nn.BatchNorm1d(input_channels),
-            nn.LeakyReLU(),
-            nn.AvgPool1d(kernel_size=4, stride=4),  # Aggressive early reduction
+        #     # Deeper denoising block
+        #     nn.Conv1d(input_channels, input_channels * 2, kernel_size=5, padding=2),
+        #     nn.BatchNorm1d(input_channels * 2),
+        #     nn.LeakyReLU(),
+        #     nn.Conv1d(input_channels * 2, input_channels, kernel_size=5, padding=2, groups=input_channels),
+        #     nn.BatchNorm1d(input_channels),
+        #     nn.LeakyReLU(),
+        #     nn.AvgPool1d(kernel_size=4, stride=4),  # Aggressive early reduction
 
-            # Additional denoising with residual
-            ResidualDenoising(input_channels),
-            nn.AvgPool1d(kernel_size=2, stride=2),
+        #     # Additional denoising with residual
+        #     ResidualDenoising(input_channels),
+        #     nn.AvgPool1d(kernel_size=2, stride=2),
 
-            # Final refinement
-            nn.Conv1d(input_channels, input_channels, kernel_size=3, padding=1),
-            nn.BatchNorm1d(input_channels),
-            nn.LeakyReLU(),
-            nn.AdaptiveAvgPool1d(50)  # Force output to 50 tokens
-        )
+        #     # Final refinement
+        #     nn.Conv1d(input_channels, input_channels, kernel_size=3, padding=1),
+        #     nn.BatchNorm1d(input_channels),
+        #     nn.LeakyReLU(),
+        #     nn.AdaptiveAvgPool1d(50)  # Force output to 50 tokens
+        # )
 
     def forward(self, x):
         # Input shape: (batch_size, time_steps, features)
@@ -245,13 +245,13 @@ class CNNFeatureExtractor(nn.Module):
 
         # Process both streams
         left = self.left_extractor(x)  # Shape: (batch_size, features, 100)
-        right = self.right_extractor(x)  # Shape: (batch_size, features, 50)
+        # right = self.right_extractor(x)  # Shape: (batch_size, features, 50)
 
         # Transpose back to (batch_size, seq_len, features)
         left = left.transpose(1, 2)  # Shape: (batch_size, 100, features)
-        right = right.transpose(1, 2)  # Shape: (batch_size, 50, features)
+        # right = right.transpose(1, 2)  # Shape: (batch_size, 50, features)
 
-        return left, right
+        return left#, right
 
 
 class ResidualDenoising(nn.Module):
@@ -317,43 +317,43 @@ class THAT_ENCODER(torch.nn.Module):
         #
         self.layer_left_norm = torch.nn.LayerNorm(var_dim_left, eps=1e-6)
         #
-        self.layer_left_cnn_0 = torch.nn.Conv1d(in_channels=var_dim_left,
-                                                out_channels=128,
-                                                kernel_size=8)
+        # self.layer_left_cnn_0 = torch.nn.Conv1d(in_channels=var_dim_left,
+        #                                         out_channels=128,
+        #                                         kernel_size=8)
 
-        self.layer_left_cnn_1 = torch.nn.Conv1d(in_channels=var_dim_left,
-                                                out_channels=128,
-                                                kernel_size=16)
+        # self.layer_left_cnn_1 = torch.nn.Conv1d(in_channels=var_dim_left,
+        #                                         out_channels=128,
+        #                                         kernel_size=16)
         #
-        self.layer_left_dropout = torch.nn.Dropout(0.5)
+        # self.layer_left_dropout = torch.nn.Dropout(0.5)
         #
         ## --------------------------------------- right ------------------------------------------
         #
         # torch.nn.AvgPool1d(kernel_size=20, stride=20))
         # self.layer_left_pooling = torch.nn.AdaptiveAvgPool1d(270)
 
-        #
-        var_num_right = 4
-        var_dim_right = 270
-        self.layer_right_encoder = torch.nn.ModuleList([Encoder(var_dim_feature=var_dim_right,
-                                                                var_num_head=10,
-                                                                var_size_cnn=[1, 2, 3])
-                                                        for _ in range(var_num_right)])
-        #
-        self.layer_right_norm = torch.nn.LayerNorm(var_dim_right, eps=1e-6)
-        #
-        self.layer_right_cnn_0 = torch.nn.Conv1d(in_channels=var_dim_right,
-                                                 out_channels=16,
-                                                 kernel_size=2)
+        # #
+        # var_num_right = 4
+        # var_dim_right = 270
+        # self.layer_right_encoder = torch.nn.ModuleList([Encoder(var_dim_feature=var_dim_right,
+        #                                                         var_num_head=10,
+        #                                                         var_size_cnn=[1, 2, 3])
+        #                                                 for _ in range(var_num_right)])
+        # #
+        # self.layer_right_norm = torch.nn.LayerNorm(var_dim_right, eps=1e-6)
+        # #
+        # self.layer_right_cnn_0 = torch.nn.Conv1d(in_channels=var_dim_right,
+        #                                          out_channels=16,
+        #                                          kernel_size=2)
 
-        self.layer_right_cnn_1 = torch.nn.Conv1d(in_channels=var_dim_right,
-                                                 out_channels=16,
-                                                 kernel_size=4)
-        #
-        self.layer_right_dropout = torch.nn.Dropout(0.5)
-        #
-        ##
-        self.layer_leakyrelu = torch.nn.LeakyReLU()
+        # self.layer_right_cnn_1 = torch.nn.Conv1d(in_channels=var_dim_right,
+        #                                          out_channels=16,
+        #                                          kernel_size=4)
+        # #
+        # self.layer_right_dropout = torch.nn.Dropout(0.5)
+        # #
+        # ##
+        # self.layer_leakyrelu = torch.nn.LeakyReLU()
         #
         ##
         # self.layer_output = torch.nn.Linear(256 + 32, var_dim_output)
@@ -549,8 +549,9 @@ class DETR_MultiUser(nn.Module):
 
     def forward(self, x):
         # Extracting Features
-        var_left, var_right = self.feature_extractor(x)
+        var_left = self.feature_extractor(x)
         # Getting the memory to query from!
+        var_right = None
         memory = self.encoder(var_left, var_right)  # Shape: (B, 420, 270)
 
         # Pass through decoder to get predictions from all layers
@@ -730,7 +731,7 @@ def run_that_detr(data_train_x,
             name_run = f"DETR_{var_r}_" + "_".join(preset["data"]["environment"]) + "_" + pretrained_state 
         print("Repeat", var_r)
         run = wandb.init(
-            project="final_results",
+            project="timeStreamOnly",
             name= name_run,
             config=preset,
             reinit=True  # Allow multiple wandb.init() calls in the same process
