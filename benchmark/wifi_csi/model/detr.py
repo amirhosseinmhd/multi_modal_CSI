@@ -531,7 +531,7 @@ class TransformerDecoderLayer(nn.Module):
 
 
 class DETR_MultiUser(nn.Module):
-    def __init__(self, var_x_shape, var_y_shape, num_decoder_layers=12, temp_cross=1, num_queries=5):
+    def __init__(self, var_x_shape, var_y_shape, num_decoder_layers=12, temp_cross=1, num_queries=5, dim_feedforward=1024):
         super().__init__()
         self.feature_extractor = CNNFeatureExtractor(input_channels=var_x_shape[-1])
         # Encoder (your existing THAT_ENCODER)
@@ -541,7 +541,7 @@ class DETR_MultiUser(nn.Module):
             d_model=270,  # Matches encoder output feature dimension
             nhead=6,
             num_decoder_layers=num_decoder_layers,
-            dim_feedforward=2048,
+            dim_feedforward=dim_feedforward,
             dropout=0.1,
             num_queries=num_queries,
             temp_cross_attention=temp_cross
@@ -739,8 +739,13 @@ def run_that_detr(data_train_x,
         #
         torch.random.manual_seed(var_r + 39)
         #
-        model_detr = DETR_MultiUser(var_x_shape, var_y_shape, num_decoder_layers=preset["nn"]["num_decoder_layers"] ,temp_cross=preset["nn"]["cross_attention_temp"],
-                                    num_queries=preset["nn"]["num_obj_queries"]).to(device)
+        model_detr = DETR_MultiUser(var_x_shape,
+                                    var_y_shape,
+                                    num_decoder_layers=preset["nn"]["num_decoder_layers"],
+                                    temp_cross=preset["nn"]["cross_attention_temp"],
+                                    num_queries=preset["nn"]["num_obj_queries"],
+                                    dim_feedforward=preset["nn"]["dim_FFN"]).to(device)
+
 
         if preset.get("pretrained_path"):
             model_detr, param_groups = load_model_components(
