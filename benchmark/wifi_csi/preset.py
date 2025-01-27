@@ -1,3 +1,4 @@
+import os
 """
 [file]          preset.py
 [description]   default settings of WiFi-based models
@@ -60,7 +61,7 @@ preset = {
         "weight_decay": 2e-4,
         "num_obj_queries": 5,
         "num_decoder_layers": 6,
-        "dim_FFN": 1024,
+        "dim_FFN": 512,
     },
     #
     ## encoding of activities and locations
