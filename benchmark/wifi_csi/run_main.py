@@ -12,7 +12,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 #
 from model import *
-from modified_preset import preset
+from preset import preset
 from load_data import load_data_x, load_data_y, encode_data_y
 from utils import *
 #
