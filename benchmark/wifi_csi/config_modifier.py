@@ -14,8 +14,8 @@ def load_preset(preset_file):
 def update_config_from_env(config):
     """Update configuration based on environment variables."""
     if 'DATA_PATH'in os.environ:
-        config['path']['data_x'] = str(os.environ['DATA_PATH']) + "wifi_csi/amp"
-        config['path']['data_y'] = str(os.environ['DATA_PATH']) + "annotation.csv"
+        config['path']['data_x'] = str(os.environ['DATA_PATH']) + "/wifi_csi/amp"
+        config['path']['data_y'] = str(os.environ['DATA_PATH']) + "/annotation.csv"
 
     if 'LEARNING_RATE' in os.environ:
         config['nn']['lr'] = float(os.environ['LEARNING_RATE'])
