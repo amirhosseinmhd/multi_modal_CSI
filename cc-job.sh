@@ -6,9 +6,9 @@
 #SBATCH --mail-type=ALL
 #SBATCH --gpus-per-node=1
 #SBATCH --job-name=csi_job
-export $OUTFILE_NAME=timeStream-%j.out
+#SBATCH --output=timeStream-%j.out
 
-#SBATCH --output=$OUTFILE_NAME
+export OUTFILE_NAME=timeStream-%j.out
 
 # Define important directories
 PROJECT_DIR=/home/amirmhd/projects/def-hinat/amirmhd/multi_modal_CSI
@@ -18,12 +18,18 @@ DATA_DIR=dataset
 # Create directory structure in SLURM_TMPDIR
 echo "Copying code and data to temporary directory..."
 mkdir -p $SLURM_TMPDIR/$CODE_DIR
-cp -r $PROJECT_DIR/$DATA_DIR/* $SLURM_TMPDIR/$DATA_DIR/
+mkdir -p $SLURM_TMPDIR/$DATA_DIR
 
+# Copy data to temporary directory for faster execution
+cp -r $PROJECT_DIR/$DATA_DIR/* $SLURM_TMPDIR/$DATA_DIR/
+echo "Data copied to temporary directory."
 # Copy code to temporary directory for faster execution
 echo "Copying code to temporary directory..."
 cp -r $PROJECT_DIR/$CODE_DIR/* $SLURM_TMPDIR/$CODE_DIR/
 cd $SLURM_TMPDIR/$CODE_DIR
+
+echo "Lets see whats inside the temporary directory"
+echo $(ls -R $SLURM_TMPDIR)
 
 module purge
 module load python/3.11.5 scipy-stack
@@ -35,7 +41,7 @@ echo "Python version: $(python --version)"
 
 
 # Update your data paths in the Python script to use SLURM_TMPDIR
-export DATA_PATH=$SLURM_TMPDIR/$DATA_DIR/
+export DATA_PATH=$SLURM_TMPDIR/$DATA_DIR
 export NUM_DECODER_LAYERS=1
 export NUM_QUERIES=8
 
