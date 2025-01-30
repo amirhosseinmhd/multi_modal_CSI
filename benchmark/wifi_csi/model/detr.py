@@ -180,100 +180,111 @@ class Encoder(torch.nn.Module):
 ## ------------------------------------------------------------------------------------------ ##
 #
 ##
-class CNNFeatureExtractor(nn.Module):
-    def __init__(self, input_channels=270):
-        super().__init__()
 
-        # Left stream - target 100 tokens
-        self.left_extractor = nn.Sequential(
-            # Initial noise reduction layer
-            nn.Conv1d(input_channels, input_channels, kernel_size=5, padding=2, groups=input_channels),
-            nn.BatchNorm1d(input_channels),
-            nn.LeakyReLU(),
+# Depthwise Separable Convolution
+class DepthwiseSeparableConv(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, padding):
+        super(DepthwiseSeparableConv, self).__init__()
+        self.depthwise = nn.Conv1d(
+            in_channels, in_channels, kernel_size, padding=padding, groups=in_channels
+        )
+        self.pointwise = nn.Conv1d(in_channels, out_channels, kernel_size=1)
 
-            # First denoising block
-            nn.Conv1d(input_channels, input_channels * 2, kernel_size=3, padding=1),
-            nn.BatchNorm1d(input_channels * 2),
-            nn.LeakyReLU(),
-            nn.Conv1d(input_channels * 2, input_channels, kernel_size=3, padding=1, groups=input_channels),
-            nn.BatchNorm1d(input_channels),
-            nn.LeakyReLU(),
-            nn.AvgPool1d(kernel_size=2, stride=2),  # Reduce time dimension by 2
+    def forward(self, x):
+        x = self.depthwise(x)
+        x = self.pointwise(x)
+        return x
 
-            # Second denoising block with residual connection
-            ResidualDenoising(input_channels),
-            nn.AvgPool1d(kernel_size=2, stride=2),  # Further reduce time dimension
+# Dilated Convolution Block
+class DilatedConvBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, dilation_rate):
+        super(DilatedConvBlock, self).__init__()
+        self.conv = nn.Conv1d(
+            in_channels, out_channels, kernel_size=3, padding=dilation_rate, dilation=dilation_rate
+        )
+        self.bn = nn.BatchNorm1d(out_channels)
+        self.relu = nn.ReLU()
 
-            # Final adjustment to get target sequence length
-            nn.Conv1d(input_channels, input_channels, kernel_size=5, padding=2),
-            nn.BatchNorm1d(input_channels),
-            nn.LeakyReLU(),
-            nn.AdaptiveAvgPool1d(100)  # Force output to 100 tokens
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.bn(x)
+        x = self.relu(x)
+        return x
+
+# Channel Attention Mechanism
+class ChannelAttention(nn.Module):
+    def __init__(self, channels, reduction_ratio=8):
+        super(ChannelAttention, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool1d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(channels, channels // reduction_ratio),
+            nn.ReLU(),
+            nn.Linear(channels // reduction_ratio, channels),
+            nn.Sigmoid(),
         )
 
-        # Right stream - target 50 tokens
-        # self.right_extractor = nn.Sequential(
-        #     # Initial noise reduction
-        #     nn.Conv1d(input_channels, input_channels, kernel_size=7, padding=3, groups=input_channels),
-        #     nn.BatchNorm1d(input_channels),
-        #     nn.LeakyReLU(),
-
-        #     # Deeper denoising block
-        #     nn.Conv1d(input_channels, input_channels * 2, kernel_size=5, padding=2),
-        #     nn.BatchNorm1d(input_channels * 2),
-        #     nn.LeakyReLU(),
-        #     nn.Conv1d(input_channels * 2, input_channels, kernel_size=5, padding=2, groups=input_channels),
-        #     nn.BatchNorm1d(input_channels),
-        #     nn.LeakyReLU(),
-        #     nn.AvgPool1d(kernel_size=4, stride=4),  # Aggressive early reduction
-
-        #     # Additional denoising with residual
-        #     ResidualDenoising(input_channels),
-        #     nn.AvgPool1d(kernel_size=2, stride=2),
-
-        #     # Final refinement
-        #     nn.Conv1d(input_channels, input_channels, kernel_size=3, padding=1),
-        #     nn.BatchNorm1d(input_channels),
-        #     nn.LeakyReLU(),
-        #     nn.AdaptiveAvgPool1d(50)  # Force output to 50 tokens
-        # )
-
     def forward(self, x):
-        # Input shape: (batch_size, time_steps, features)
-        # Need to transpose for CNN
-        x = x.transpose(1, 2)  # Now: (batch_size, features, time_steps)
+        b, c, _ = x.size()
+        y = self.avg_pool(x).view(b, c)
+        y = self.fc(y).view(b, c, 1)
+        return x * y
 
-        # Process both streams
-        left = self.left_extractor(x)  # Shape: (batch_size, features, 100)
-        # right = self.right_extractor(x)  # Shape: (batch_size, features, 50)
-
-        # Transpose back to (batch_size, seq_len, features)
-        left = left.transpose(1, 2)  # Shape: (batch_size, 100, features)
-        # right = right.transpose(1, 2)  # Shape: (batch_size, 50, features)
-
-        return left#, right
-
-
-class ResidualDenoising(nn.Module):
+# Non-Local Block for Global Context Modeling
+class NonLocalBlock(nn.Module):
     def __init__(self, channels):
-        super().__init__()
-        self.conv1 = nn.Conv1d(channels, channels, kernel_size=3, padding=1, groups=channels)
-        self.bn1 = nn.BatchNorm1d(channels)
-        self.conv2 = nn.Conv1d(channels, channels, kernel_size=3, padding=1, groups=channels)
-        self.bn2 = nn.BatchNorm1d(channels)
-        self.relu = nn.LeakyReLU()
+        super(NonLocalBlock, self).__init__()
+        self.theta = nn.Conv1d(channels, channels // 2, kernel_size=1)
+        self.phi = nn.Conv1d(channels, channels // 2, kernel_size=1)
+        self.g = nn.Conv1d(channels, channels // 2, kernel_size=1)
+        self.out_conv = nn.Conv1d(channels // 2, channels, kernel_size=1)
+        self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, x):
-        residual = x
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-        out = self.conv2(out)
-        out = self.bn2(out)
-        out += residual
-        out = self.relu(out)
-        return out
+        b, c, t = x.size()
+        theta = self.theta(x).view(b, c // 2, -1)
+        phi = self.phi(x).view(b, c // 2, -1)
+        g = self.g(x).view(b, c // 2, -1)
+        attn = self.softmax(torch.matmul(theta.transpose(1, 2), phi))
+        out = torch.matmul(g, attn.transpose(1, 2))
+        out = self.out_conv(out.view(b, c // 2, t))
+        return x + out
 
+# Backbone Network
+class CNNFeatureExtractor(nn.Module):
+    def __init__(self, input_channels=270, output_channels=270, reduced_channels=128):
+        super(CNNFeatureExtractor, self).__init__()
+        # Linear embedding to reduce channel dimensionality
+        self.embedding = nn.Linear(input_channels, reduced_channels)
+        # Initial depthwise separable convolution
+        self.initial_conv = DepthwiseSeparableConv(reduced_channels, output_channels, kernel_size=7, padding=3)
+        # Max pooling to reduce temporal dimension
+        self.pool = nn.MaxPool1d(kernel_size=3, stride=3)
+        # Dilated convolution blocks
+        self.dilated_blocks = nn.Sequential(
+            DilatedConvBlock(output_channels, output_channels, dilation_rate=1),
+            DilatedConvBlock(output_channels, output_channels, dilation_rate=2),
+            DilatedConvBlock(output_channels, output_channels, dilation_rate=4),
+            DilatedConvBlock(output_channels, output_channels, dilation_rate=8),
+        )
+        # Channel attention mechanism
+        self.channel_attention = ChannelAttention(output_channels)
+        # Non-local block for global context modeling
+        self.non_local = NonLocalBlock(output_channels)
+        # Final convolution to reduce temporal dimension to T=100
+        self.final_conv = nn.Conv1d(output_channels, output_channels, kernel_size=10, stride=10)
+
+    def forward(self, x):
+        # Input shape: (batch_size, 3000, 270)
+        x = self.embedding(x)  # Reduce channel dimensionality: (batch_size, 3000, reduced_channels)
+        x = x.permute(0, 2, 1)  # Swap time and feature dimensions: (batch_size, reduced_channels, 3000)
+        x = self.initial_conv(x)
+        x = self.pool(x)  # Reduce temporal dimension: (batch_size, output_channels, 1000)
+        x = self.dilated_blocks(x)  # Apply dilated convolutions
+        x = self.channel_attention(x)  # Apply channel attention
+        x = self.non_local(x)  # Apply non-local block
+        x = self.final_conv(x)  # Reduce temporal dimension to T=100: (batch_size, output_channels, 100)
+        x = x.permute(0, 2, 1)  # Swap back: (batch_size, 100, output_channels)
+        return x
 
 
 class THAT_ENCODER(torch.nn.Module):
