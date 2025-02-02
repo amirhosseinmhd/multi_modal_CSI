@@ -742,7 +742,7 @@ def run_that_detr(data_train_x,
             name_run = f"DETR_{var_r}_" + "_".join(preset["data"]["environment"]) + "_" + pretrained_state 
         print("Repeat", var_r)
         run = wandb.init(
-            project="timeStreamOnly",
+            project="HyperParameter_TimeStream",
             name= name_run,
             config=preset,
             reinit=True  # Allow multiple wandb.init() calls in the same process
