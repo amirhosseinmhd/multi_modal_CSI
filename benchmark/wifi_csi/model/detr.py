@@ -420,12 +420,9 @@ class TransformerDecoder(nn.Module):
 
         # Output projection for classification and box prediction
         # Assuming num_classes is the number of activity classes
-        self.class_embed = nn.Linear(d_model, 10)  # 10 activity classes
 
         # Create auxiliary outputs for each decoder layer + final output
-        self.class_embed = nn.ModuleList([
-            nn.Linear(d_model, 10) for _ in range(num_decoder_layers + 1)
-        ])
+        self.class_embed = nn.Linear(d_model, 10)
 
     def forward(self, memory):
         """
@@ -454,39 +451,10 @@ class TransformerDecoder(nn.Module):
                 query_pos=query_pos
             )
 
-            # Apply norm and get predictions for this layer
-            normed_output = self.norm(output)
-            pred = self.class_embed[i](normed_output)
+            pred = self.class_embed(output)
             intermediate.append(pred)
 
-        # Final layer norm and prediction
-        output = self.norm(output)
-        pred = self.class_embed[-1](output)
-        intermediate.append(pred)
-
-        return torch.stack(intermediate)  # Shape: [num_layers + 1, B, num_queries, num_classes]
-
-
-class TemperatureMultiheadAttention(nn.MultiheadAttention):
-    def __init__(self, embed_dim, num_heads, temperature=2.0, **kwargs):
-        super().__init__(embed_dim, num_heads, **kwargs)
-        self.temperature = temperature
-
-    def forward(self, query, key, value, key_padding_mask=None,
-                need_weights=True, attn_mask=None, average_attn_weights=True):
-        # Regular attention computation
-        attn_output, attn_weights = super().forward(
-            query, key, value,
-            key_padding_mask=key_padding_mask,
-            need_weights=need_weights,
-            attn_mask=attn_mask,
-            average_attn_weights=average_attn_weights
-        )
-
-        # Apply temperature scaling to attention output
-        attn_output = attn_output / self.temperature
-
-        return attn_output, attn_weights
+        return torch.stack(intermediate)  # Shape: [num_layers, B, num_queries, num_classes]
 
 
 class TransformerDecoderLayer(nn.Module):
@@ -541,6 +509,28 @@ class TransformerDecoderLayer(nn.Module):
         return tgt
 
 
+class TemperatureMultiheadAttention(nn.MultiheadAttention):
+    def __init__(self, embed_dim, num_heads, temperature=2.0, **kwargs):
+        super().__init__(embed_dim, num_heads, **kwargs)
+        self.temperature = temperature
+
+    def forward(self, query, key, value, key_padding_mask=None,
+                need_weights=True, attn_mask=None, average_attn_weights=True):
+        # Regular attention computation
+        attn_output, attn_weights = super().forward(
+            query, key, value,
+            key_padding_mask=key_padding_mask,
+            need_weights=need_weights,
+            attn_mask=attn_mask,
+            average_attn_weights=average_attn_weights
+        )
+
+        # Apply temperature scaling to attention output
+        attn_output = attn_output / self.temperature
+
+        return attn_output, attn_weights
+
+
 class DETR_MultiUser(nn.Module):
     def __init__(self, var_x_shape, var_y_shape, num_decoder_layers=12, temp_cross=1, num_queries=5, dim_feedforward=1024):
         super().__init__()
@@ -571,21 +561,14 @@ class DETR_MultiUser(nn.Module):
         return outputs_class
 
 
-
 class HungarianMatchingLoss(nn.Module):
     def __init__(self, cost_class_weight, aux_loss_weight, label_smoothing, class_imbalance_weight):
-        """
-        Hungarian Matching Loss for multi-user activity recognition with auxiliary losses
-        Args:
-            cost_class: Relative weight of classification loss
-            aux_loss_weight: Weight for auxiliary losses from intermediate decoder layers
-        """
         super().__init__()
         self.cost_class = cost_class_weight
         self.aux_loss_weight = aux_loss_weight
 
         weights = torch.ones(10)
-        weights[-1] = class_imbalance_weight  # Last class gets lower weight since it appears more often
+        weights[-1] = class_imbalance_weight
         weights = weights * (len(weights) / weights.sum())
 
         self.ce_loss = nn.CrossEntropyLoss(
@@ -609,18 +592,64 @@ class HungarianMatchingLoss(nn.Module):
 
         # Compute classification cost matrix
         out_prob = outputs.softmax(-1)  # [batch_size, num_queries, num_classes]
-        # Convert target one-hot to class indices
         tgt_ids = targets.argmax(-1)  # [batch_size, num_queries]
 
-        # Compute cost matrix for all pairs of predictions and targets
-        cost_class = -out_prob[:, :, tgt_ids.view(-1)].view(bs, num_queries, -1)
+        indices = []
+        # Process each batch independently
+        for b in range(bs):
+            # Compute cost matrix for current
+            # Create cost matrix showing how well each prediction matches each target
+            cost_matrix = -out_prob[b][:, tgt_ids[b]]  # [num_queries, num_queries]
+            cost_matrix = self.cost_class * cost_matrix.cpu().numpy()
 
-        # Final cost matrix
-        C = self.cost_class * cost_class
+            # Run Hungarian algorithm
+            row_ind, col_ind = linear_sum_assignment(cost_matrix)
 
-        sizes = [num_queries] * bs
-        indices = [linear_sum_assignment(c[i].cpu()) for i, c in enumerate(C.split(sizes, -1))]
-        return [(torch.as_tensor(i, dtype=torch.int64), torch.as_tensor(j, dtype=torch.int64)) for i, j in indices]
+            # Convert to tensors and move to correct device
+            row_ind = torch.as_tensor(row_ind, dtype=torch.int64, device=outputs.device) # Which queries to use
+            col_ind = torch.as_tensor(col_ind, dtype=torch.int64, device=outputs.device) # Which targets they match to
+            indices.append((row_ind, col_ind))
+            """
+            tgt_ids[b]
+            Out[1]: tensor([1, 1, 1, 1, 9], device='cuda:0')
+            Example how it works:
+            [[-0.1645718 , -0.1645718 , -0.1645718 , -0.1645718 , -0.07412154],  # Query 0
+             [-0.14723456, -0.14723456, -0.14723456, -0.14723456, -0.08399412],  # Query 1
+             [-0.16388056, -0.16388056, -0.16388056, -0.16388056, -0.05493092],  # Query 2
+             [-0.1868437 , -0.1868437 , -0.1868437 , -0.1868437 , -0.07625321],  # Query 3
+             [-0.20076165, -0.20076165, -0.20076165, -0.20076165, -0.0671524 ]]  # Query 4
+            row_ind = [0, 1, 2, 3, 4]  # Which queries to use
+            col_ind = [0, 4, 2, 3, 1]  # Which targets they match to
+            This means:
+                
+                Query 0 matches with target 0 (class 1)
+                Query 1 matches with target 4 (class 9)
+                Query 2 matches with target 2 (class 1)
+                Query 3 matches with target 3 (class 1)
+                Query 4 matches with target 1 (class 1)
+            Another Example which is easier:
+            Ground truth labels tgt_ids[b] = [8, 0, 9, 1, 8] (5 targets)
+            # Cost Matrix:
+            [[-0.0751, -0.1023, -0.0876, -0.2142, -0.0751],  # Query 0
+             [-0.0911, -0.0929, -0.0980, -0.2144, -0.0911],  # Query 1
+             [-0.0606, -0.0813, -0.1075, -0.2602, -0.0606],  # Query 2
+             [-0.0867, -0.1077, -0.1456, -0.1916, -0.0867],  # Query 3
+             [-0.0803, -0.1265, -0.1192, -0.1970, -0.0803]]  # Query 4
+            
+                IMPORTANT:
+                This cost matrix was created by selecting probabilities from out_prob based on tgt_ids:
+
+                Column 0: probabilities for class 8 (first target)
+                Column 1: probabilities for class 0 (second target)
+                Column 2: probabilities for class 9 (third target)
+                Column 3: probabilities for class 1 (fourth target)
+                Column 4: probabilities for class 8 (fifth target)
+                
+                row_ind = [0, 1, 2, 3, 4]    # Predictions to use
+                col_ind = [4, 0, 3, 2, 1]    # Which targets they match to
+            """
+
+        return indices
 
     def _get_layer_loss(self, pred, target, indices):
         """Helper to compute loss for a single layer's predictions"""
@@ -643,18 +672,19 @@ class HungarianMatchingLoss(nn.Module):
         if outputs.dim() == 4:  # Has auxiliary outputs [num_layers + 1, B, num_queries, num_classes]
             # Split predictions from different decoder layers
             aux_outputs = outputs[:-1]  # Predictions from intermediate layers
-            outputs = outputs[-1]  # Predictions from final layer
+            outputs_final = outputs[-1]  # Predictions from final layer
 
-            # Calculate loss for final predictions
-            indices = self.Hungarian_matching(outputs, targets)
-            final_loss = self._get_layer_loss(outputs, targets, indices)
+            # Calculate matching using only the final layer predictions
+            indices = self.Hungarian_matching(outputs_final, targets)
 
-            # Calculate auxiliary losses
+            # Calculate loss for final predictions using final layer matching
+            final_loss = self._get_layer_loss(outputs_final, targets, indices)
+
+            # Calculate auxiliary losses using the SAME indices from final layer
             aux_losses = []
             for aux_output in aux_outputs:
-                # For each layer, compute matching and loss
-                aux_indices = self.Hungarian_matching(aux_output, targets)
-                layer_loss = self._get_layer_loss(aux_output, targets, aux_indices)
+                # Use the same matching indices for all auxiliary layers
+                layer_loss = self._get_layer_loss(aux_output, targets, indices)
                 aux_losses.append(layer_loss)
 
             # Combine losses
@@ -666,7 +696,6 @@ class HungarianMatchingLoss(nn.Module):
         else:  # No auxiliary outputs, just compute regular loss
             indices = self.Hungarian_matching(outputs, targets)
             return self._get_layer_loss(outputs, targets, indices)
-
 
 
 
@@ -742,7 +771,7 @@ def run_that_detr(data_train_x,
             name_run = f"DETR_{var_r}_" + "_".join(preset["data"]["environment"]) + "_" + pretrained_state 
         print("Repeat", var_r)
         run = wandb.init(
-            project="HyperParameter_TimeStream",
+            project="TimeStreamOnly_Final",
             name= name_run,
             config=preset,
             reinit=True  # Allow multiple wandb.init() calls in the same process
