@@ -300,24 +300,9 @@ class THAT_ENCODER(torch.nn.Module):
         var_dim_feature = var_x_shape[-1]
         var_dim_time = var_x_shape[-2]
         var_dim_output = var_y_shape[-1]
-        #    self.num_heads = 5
 
-        # Replace the single output layer with multiple prediction heads
-        #    self.layer_output = torch.nn.ModuleList([
-        #        torch.nn.Linear(256 + 32, var_dim_output) for _ in range(self.num_heads)
-        #   ])
-
-        #
-        ## ---------------------------------------- left ------------------------------------------
-        #
-        # Replace pooling with CNN feature extractor
-        # self.feature_extractor = CNNFeatureExtractor(input_channels=var_dim_feature)
-
-        # Gaussian encoding layers
         self.layer_left_gaussian = Gaussian_Position(var_dim_feature, 100)  # 100 tokens for left stream
-        # self.layer_right_gaussian = Gaussian_Position(var_dim_feature, 50)  # 50 tokens for right stream
 
-        # Left stream encoder
 
         var_num_left = 4
         var_dim_left = var_dim_feature
@@ -327,47 +312,7 @@ class THAT_ENCODER(torch.nn.Module):
                                                        for _ in range(var_num_left)])
         #
         self.layer_left_norm = torch.nn.LayerNorm(var_dim_left, eps=1e-6)
-        #
-        # self.layer_left_cnn_0 = torch.nn.Conv1d(in_channels=var_dim_left,
-        #                                         out_channels=128,
-        #                                         kernel_size=8)
 
-        # self.layer_left_cnn_1 = torch.nn.Conv1d(in_channels=var_dim_left,
-        #                                         out_channels=128,
-        #                                         kernel_size=16)
-        #
-        # self.layer_left_dropout = torch.nn.Dropout(0.5)
-        #
-        ## --------------------------------------- right ------------------------------------------
-        #
-        # torch.nn.AvgPool1d(kernel_size=20, stride=20))
-        # self.layer_left_pooling = torch.nn.AdaptiveAvgPool1d(270)
-
-        # #
-        # var_num_right = 4
-        # var_dim_right = 270
-        # self.layer_right_encoder = torch.nn.ModuleList([Encoder(var_dim_feature=var_dim_right,
-        #                                                         var_num_head=10,
-        #                                                         var_size_cnn=[1, 2, 3])
-        #                                                 for _ in range(var_num_right)])
-        # #
-        # self.layer_right_norm = torch.nn.LayerNorm(var_dim_right, eps=1e-6)
-        # #
-        # self.layer_right_cnn_0 = torch.nn.Conv1d(in_channels=var_dim_right,
-        #                                          out_channels=16,
-        #                                          kernel_size=2)
-
-        # self.layer_right_cnn_1 = torch.nn.Conv1d(in_channels=var_dim_right,
-        #                                          out_channels=16,
-        #                                          kernel_size=4)
-        # #
-        # self.layer_right_dropout = torch.nn.Dropout(0.5)
-        # #
-        # ##
-        # self.layer_leakyrelu = torch.nn.LeakyReLU()
-        #
-        ##
-        # self.layer_output = torch.nn.Linear(256 + 32, var_dim_output)
 
     #
     ##
@@ -381,16 +326,9 @@ class THAT_ENCODER(torch.nn.Module):
 
         # Process left stream through transformer encoders
         for layer in self.layer_left_encoder:
-            var_left = layer(var_left)
+            var_left = var_left + layer(var_left)
         var_left = self.layer_left_norm(var_left)
 
-        # # Process right stream through transformer encoders
-        # for layer in self.layer_right_encoder:
-        #     var_right = layer(var_right)
-        # var_right = self.layer_right_norm(var_right)
-
-        # Concatenate the streams
-        # var_t = torch.concat([var_left, var_right], dim=1)  # Output: (batch_size, 150, features)
 
         return var_left
 
@@ -772,7 +710,7 @@ def run_that_detr(data_train_x,
         print("Repeat", var_r)
         run = wandb.init(
             project="TimeStreamOnly_Final",
-            name= name_run,
+            name= name_run + "Without_ChannelAttentionNonLocalBlockLinearEmbedding",
             config=preset,
             reinit=True  # Allow multiple wandb.init() calls in the same process
         )
@@ -785,7 +723,12 @@ def run_that_detr(data_train_x,
                                     temp_cross=preset["nn"]["cross_attention_temp"],
                                     num_queries=preset["nn"]["num_obj_queries"],
                                     dim_feedforward=preset["nn"]["dim_FFN"]).to(device)
-
+        wandb.watch(
+            model_detr.feature_extractor,  # Directly target the CNN backbone
+            log="all",  # Log gradients and parameters
+            log_freq=50,  # Frequency of logging
+            log_graph=True  # Optional: visualize computation graph
+        )
 
         if preset.get("pretrained_path"):
             model_detr, param_groups = load_model_components(
