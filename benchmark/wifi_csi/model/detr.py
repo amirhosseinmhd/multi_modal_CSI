@@ -254,9 +254,9 @@ class CNNFeatureExtractor(nn.Module):
     def __init__(self, input_channels=270, output_channels=270, reduced_channels=128):
         super(CNNFeatureExtractor, self).__init__()
         # Linear embedding to reduce channel dimensionality
-        self.embedding = nn.Linear(input_channels, reduced_channels)
+        # self.embedding = nn.Linear(input_channels, reduced_channels)
         # Initial depthwise separable convolution
-        self.initial_conv = DepthwiseSeparableConv(reduced_channels, output_channels, kernel_size=7, padding=3)
+        self.initial_conv = DepthwiseSeparableConv(input_channels, output_channels, kernel_size=7, padding=3)
         # Max pooling to reduce temporal dimension
         self.pool = nn.MaxPool1d(kernel_size=3, stride=3)
         # Dilated convolution blocks
@@ -267,21 +267,21 @@ class CNNFeatureExtractor(nn.Module):
             DilatedConvBlock(output_channels, output_channels, dilation_rate=8),
         )
         # Channel attention mechanism
-        self.channel_attention = ChannelAttention(output_channels)
+        # self.channel_attention = ChannelAttention(output_channels)
         # Non-local block for global context modeling
-        self.non_local = NonLocalBlock(output_channels)
+        # self.non_local = NonLocalBlock(output_channels)
         # Final convolution to reduce temporal dimension to T=100
-        self.final_conv = nn.Conv1d(output_channels, output_channels, kernel_size=10, stride=10)
+        self.final_conv = nn.Conv1d(output_channels, output_channels, kernel_size=20, stride=20)
 
     def forward(self, x):
         # Input shape: (batch_size, 3000, 270)
-        x = self.embedding(x)  # Reduce channel dimensionality: (batch_size, 3000, reduced_channels)
+        # x = self.embedding(x)  # Reduce channel dimensionality: (batch_size, 3000, reduced_channels)
         x = x.permute(0, 2, 1)  # Swap time and feature dimensions: (batch_size, reduced_channels, 3000)
         x = self.initial_conv(x)
         x = self.pool(x)  # Reduce temporal dimension: (batch_size, output_channels, 1000)
         x = self.dilated_blocks(x)  # Apply dilated convolutions
-        x = self.channel_attention(x)  # Apply channel attention
-        x = self.non_local(x)  # Apply non-local block
+        # x = self.channel_attention(x)  # Apply channel attention
+        # x = self.non_local(x)  # Apply non-local block
         x = self.final_conv(x)  # Reduce temporal dimension to T=100: (batch_size, output_channels, 100)
         x = x.permute(0, 2, 1)  # Swap back: (batch_size, 100, output_channels)
         return x
@@ -301,14 +301,14 @@ class THAT_ENCODER(torch.nn.Module):
         var_dim_time = var_x_shape[-2]
         var_dim_output = var_y_shape[-1]
 
-        self.layer_left_gaussian = Gaussian_Position(var_dim_feature, 100)  # 100 tokens for left stream
+        self.layer_left_gaussian = Gaussian_Position(var_dim_feature, 50)  # 100 tokens for left stream
 
 
         var_num_left = 4
         var_dim_left = var_dim_feature
         self.layer_left_encoder = torch.nn.ModuleList([Encoder(var_dim_feature=var_dim_left,
                                                                var_num_head=10,
-                                                               var_size_cnn=[1, 3, 5])
+                                                               var_size_cnn=[1])
                                                        for _ in range(var_num_left)])
         #
         self.layer_left_norm = torch.nn.LayerNorm(var_dim_left, eps=1e-6)
@@ -322,7 +322,6 @@ class THAT_ENCODER(torch.nn.Module):
 
         # Apply Gaussian position encoding
         var_left = self.layer_left_gaussian(var_left)  # Output: (batch_size, 100, features)
-        # var_right = self.layer_right_gaussian(var_right)  # Output: (batch_size, 50, features)
 
         # Process left stream through transformer encoders
         for layer in self.layer_left_encoder:
@@ -710,7 +709,7 @@ def run_that_detr(data_train_x,
         print("Repeat", var_r)
         run = wandb.init(
             project="TimeStreamOnly_Final",
-            name= name_run + "Without_ChannelAttentionNonLocalBlockLinearEmbedding",
+            name= name_run + "very_small",
             config=preset,
             reinit=True  # Allow multiple wandb.init() calls in the same process
         )
