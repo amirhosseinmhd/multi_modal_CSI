@@ -62,6 +62,7 @@ preset = {
         "num_obj_queries": 5,
         "num_decoder_layers": 6,
         "dim_FFN": 512,
+        "token_length": 10,
     },
     #
     ## encoding of activities and locations
